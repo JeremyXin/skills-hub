@@ -8,6 +8,8 @@
 |-------|------|
 | [dev-code-reviewer](./dev-code-reviewer/SKILL.md) | 对当前分支相对基线的改动做只读代码审查,按目标对齐、规范与质量、运行时风险三个视角逐项取证,输出结构化报告与合并建议。 |
 
+依赖子 agent 的 skill,其定义放在 [agents/](./agents/) 下,安装时需同时链接到 Claude Code 的 agents 目录。
+
 ## License
 
 [Apache-2.0](./LICENSE)
