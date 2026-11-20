@@ -3,14 +3,14 @@
  * E2E 测试报告可视化渲染器
  *
  * 用法：
- *   node .claude/skills/e2e-auto-test/references/render-report.mjs <报告目录> [--strict]
+ *   node ~/.claude/skills/e2e-test-process/references/render-report.mjs <报告目录> [--strict]
  *
  * 读取目录下所有 *-test-report.json，生成同名 .html。
  * --strict：存在 blocker 级告警时以退出码 1 结束（可作为提交前门禁）。
  *
- * 项目差异通过报告 JSON 顶层 reportConfig 声明，渲染器不含项目词：
- *   "reportConfig": { "payloadLayers": ["接口层", "回调层"] }
- * payloadLayers：必须留 request/response 报文的层；未声明则不检查。
+ * 项目差异通过报告 JSON 顶层 reportConfig 声明，渲染器本身不含任何项目词：
+ *   "reportConfig": { "payloadLayers": ["<层名1>", "<层名2>"] }
+ * payloadLayers：必须留 request/response 报文的层，层名由项目 skill 定义；未声明则不检查。
  *
  * 约束：
  * - Markdown 是事实源，JSON 与 HTML 都是派生物；HTML 不得手工编辑。
@@ -123,7 +123,7 @@ function verify(report) {
   }
 
   // 5. 项目声明的报文层必须留下报文原文（review 时唯一能核对「发了什么」的依据）
-  //    reportConfig.payloadLayers 由项目 skill 声明，如 ["接口层", "回调层"]；未声明则不检查
+  //    reportConfig.payloadLayers 由项目 skill 声明（层名由项目定义）；未声明则不检查
   const payloadLayers = Array.isArray(report.reportConfig?.payloadLayers)
     ? report.reportConfig.payloadLayers
     : [];
