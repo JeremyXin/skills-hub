@@ -675,6 +675,11 @@ function renderHtml(report, alarms, sourceName) {
     renderTabs();
     var host = document.getElementById('content');
     if (state.view === 'cases') {
+      var list = filteredCases();
+      if (!list.some(function (c) { return c.id === state.selected; })) {
+        state.selected = list.length ? list[0].id : null;
+        if (state.selected) syncHash();
+      }
       host.innerHTML = '<div class="layout">' + renderNav() + '<div class="main">' + renderDetail() + '</div></div>';
       Array.prototype.forEach.call(document.querySelectorAll('[data-case]'), function (el) {
         el.addEventListener('click', function () {
