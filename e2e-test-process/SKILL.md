@@ -83,6 +83,8 @@ disable-model-invocation: true
 
 **报告必须逐例给出「评测方式 + 具体证据 + 证据摘要」**：证据 = 命令或查询语句 + 实测值 + 时间窗，日志用原文摘录；只有一张结论总览表、没有可复核证据的报告视为未完成。报告结构见 `references/test-report-template.md`，出口准则见 `references/test-process-standard.md`。
 
+**可选：结构化产物与可视化。** 项目 skill 若提供 `references/render-report.mjs` 与 `references/test-report-schema.md`，S6 需与 md 同轮产出 `-test-report.json` 并渲染同名 `.html`，三件一并提交，HTML 禁止手改；存在 blocker 告警时必须修复或改写结论。项目差异（层名、哪些层必须留 `request` / `response` 报文）写进 JSON 顶层 `reportConfig.payloadLayers`，渲染器本身不含项目词。未提供渲染器时本节不适用。
+
 ## 6. 业界标准对齐
 
 流程按 ISTQB 裁剪，只保留 E2E 真正用得上的部分。最容易被忽略的四条：
@@ -111,4 +113,6 @@ disable-model-invocation: true
 - `references/test-case-spec.md` — 用例结构、字段规则、设计方法、自查清单、反模式。
 - `references/test-data-spec.md` — 数据发现与构造优先级、测试标记、台账、清理、测试专用接口约束。
 - `references/test-report-template.md` — 报告结构（证据通道 + 总览 + 逐例证据）、填写规则、结论判定。
+- `references/test-report-schema.md` — 可选：报告 JSON 契约、`reportConfig` 项目差异声明、完整性告警规则。
+- `references/render-report.mjs` — 可选：读取 JSON 生成自包含 HTML，`--strict` 时 blocker 退出码 1。
 - `references/test-process-standard.md` — ISTQB 映射、入口/出口准则、可追溯矩阵、缺陷与回归、假阳性清单。

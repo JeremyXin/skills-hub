@@ -133,6 +133,25 @@
 > 附录不承担「能否复核」的职责——复核所需的关键证据必须在 §4.3 内可直接看到。
 ```
 
+## 结构化产物与可视化（可选）
+
+> 本节为可选能力：项目 skill 未声明渲染器时跳过，md 报告即为最终产物。
+
+项目 skill 若提供 `references/render-report.mjs` 与 JSON 契约（`references/test-report-schema.md`），S6 必须：
+
+1. 与 md 同轮产出 `-test-report.json`，字段按 schema，**断言必须写「预期 + 实测」**；
+2. 运行渲染器生成同名 `.html`，打开自查完整性告警；
+3. md / json / html 三件一并提交，HTML 禁止手改；
+4. 存在 blocker 告警时必须修复或改写结论，不能只关告警。
+
+项目差异（层名、哪些层必须留 `request` / `response` 报文）写进报告 JSON 顶层，渲染器不含任何项目词：
+
+```json
+"reportConfig": { "payloadLayers": ["<层名>", "..."] }
+```
+
+`payloadLayers` 未声明时，渲染器不检查报文，其余告警规则照常执行。
+
 ## 填写规则
 
 | 章节 | 规则 |
