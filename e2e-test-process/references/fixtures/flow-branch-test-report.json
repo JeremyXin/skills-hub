@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 1,
+  "requirement": "fixture：决策双分支（期望无 FLOW_* 告警）",
+  "env": "dev",
+  "reportDate": "2026-11-22",
+  "meta": { "branch": "fixture", "commit": "—", "carrier": "fixture", "executedAt": "—", "executor": "fixture" },
+  "verdict": { "publishable": true, "summary": "夹具：1/1 PASS", "conditions": [] },
+  "requirements": [{ "id": "REQ-1", "title": "夹具需求" }],
+  "cases": [
+    {
+      "id": "TC-001",
+      "title": "商品不存在时改走广告簇兜底",
+      "priority": "P0",
+      "verdict": "PASS",
+      "requirements": ["REQ-1"],
+      "layers": ["数据层", "回调层"],
+      "requirementStatement": "商品已删则回调广告簇",
+      "assertions": [
+        { "expected": "商品行 0 条", "actual": "0 行", "layer": "数据层", "matches": true, "evidenceRef": "ev-product" }
+      ],
+      "evidence": [
+        { "id": "ev-product", "layer": "数据层", "command": "SELECT id FROM cf_product_detail WHERE id=9", "result": "0 行", "raw": null },
+        { "id": "ev-qrtz", "layer": "数据层", "command": "SELECT JOB_NAME FROM QRTZ_JOB_DETAILS WHERE JOB_NAME='pdd-product'", "result": "pdd-product", "raw": null },
+        { "id": "ev-cb", "layer": "回调层", "command": "cat callback_log", "result": "clusterId=1002", "request": { "clusterId": 1002 }, "response": { "code": 0 }, "raw": null }
+      ],
+      "gaps": [],
+      "flow": {
+        "direction": "LR",
+        "nodes": [
+          { "id": "start", "type": "start", "label": "开始" },
+          { "id": "job", "type": "schedule", "label": "到点触发", "detail": "pdd-product", "evidenceRefs": ["ev-qrtz"] },
+          { "id": "product", "type": "sql", "label": "查询商品表", "detail": "cf_product_detail", "evidenceRefs": ["ev-product"] },
+          { "id": "dec", "type": "decision", "label": "商品存在？", "detail": "本例走「不存在」" },
+          { "id": "cluster", "type": "callback", "label": "按原簇分发", "detail": "clusterId=原簇", "unverified": true, "note": "本例走「不存在」分支，该分支未执行" },
+          { "id": "fallback", "type": "callback", "label": "广告簇兜底回调", "detail": "clusterId=1002", "evidenceRefs": ["ev-cb"] },
+          { "id": "end", "type": "end", "label": "结束" }
+        ],
+        "edges": [
+          { "from": "start", "to": "job" },
+          { "from": "job", "to": "product" },
+          { "from": "product", "to": "dec" },
+          { "from": "dec", "to": "cluster", "label": "存在" },
+          { "from": "dec", "to": "fallback", "label": "不存在", "kind": "error" },
+          { "from": "cluster", "to": "end" },
+          { "from": "fallback", "to": "end" }
+        ]
+      }
+    }
+  ],
+  "stats": { "byPriority": [{ "priority": "P0", "total": 1, "pass": 1, "fail": 0, "blocked": 0 }] },
+  "defects": [],
+  "notCovered": [],
+  "cleanup": { "method": "无（夹具）", "checkedItems": 1, "residual": 0, "detail": "夹具不构造数据" },
+  "conclusion": ["夹具：决策双分支渲染"]
+}

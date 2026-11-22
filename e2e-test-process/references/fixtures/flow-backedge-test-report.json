@@ -1,0 +1,48 @@
+{
+  "schemaVersion": 1,
+  "requirement": "fixture：真回边（期望 FLOW_CYCLE_BACKEDGE，其余无 FLOW_* 告警）",
+  "env": "dev",
+  "reportDate": "2026-11-22",
+  "meta": { "branch": "fixture", "commit": "—", "carrier": "fixture", "executedAt": "—", "executor": "fixture" },
+  "verdict": { "publishable": true, "summary": "夹具：1/1 PASS", "conditions": [] },
+  "requirements": [{ "id": "REQ-1", "title": "夹具需求" }],
+  "cases": [
+    {
+      "id": "TC-001",
+      "title": "反例：把重试画成回边（应告警）",
+      "priority": "P0",
+      "verdict": "PASS",
+      "requirements": ["REQ-1"],
+      "layers": ["接口层"],
+      "requirementStatement": "夹具：回边兜底渲染",
+      "assertions": [
+        { "expected": "HTTP 200", "actual": "HTTP 200", "layer": "接口层", "matches": true, "evidenceRef": "ev-save" }
+      ],
+      "evidence": [
+        { "id": "ev-save", "layer": "接口层", "command": "POST /product/save", "result": "HTTP 200", "raw": null },
+        { "id": "ev-cb", "layer": "接口层", "command": "cat callback_log", "result": "失败 1 次", "raw": null }
+      ],
+      "gaps": [],
+      "flow": {
+        "direction": "LR",
+        "nodes": [
+          { "id": "start", "type": "start", "label": "开始" },
+          { "id": "save", "type": "http", "label": "post(商品保存)", "detail": "POST /product/save", "evidenceRefs": ["ev-save"] },
+          { "id": "cb", "type": "callback", "label": "回调下游", "detail": "失败则重排", "evidenceRefs": ["ev-cb"] },
+          { "id": "end", "type": "end", "label": "结束" }
+        ],
+        "edges": [
+          { "from": "start", "to": "save" },
+          { "from": "save", "to": "cb" },
+          { "from": "cb", "to": "end" },
+          { "from": "cb", "to": "save", "label": "重试", "kind": "retry" }
+        ]
+      }
+    }
+  ],
+  "stats": { "byPriority": [{ "priority": "P0", "total": 1, "pass": 1, "fail": 0, "blocked": 0 }] },
+  "defects": [],
+  "notCovered": [],
+  "cleanup": { "method": "无（夹具）", "checkedItems": 1, "residual": 0, "detail": "夹具不构造数据" },
+  "conclusion": ["夹具：回边告警"]
+}

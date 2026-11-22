@@ -1,0 +1,19 @@
+{
+  "flow-linear-test-report.json": [],
+  "flow-branch-test-report.json": [],
+  "flow-retry-test-report.json": [],
+  "flow-missing-test-report.json": [],
+  "flow-longlabel-test-report.json": [],
+  "flow-backedge-test-report.json": ["FLOW_CYCLE_BACKEDGE"],
+  "flow-empty-test-report.json": ["FLOW_EMPTY"],
+  "flow-invalid-test-report.json": [
+    "FLOW_BAD_DIRECTION",
+    "FLOW_DUP_NODE_ID",
+    "FLOW_NODE_UNKNOWN_TYPE",
+    "FLOW_NODE_NO_EVIDENCE",
+    "FLOW_EDGE_ORPHAN",
+    "FLOW_EVIDENCE_ORPHAN",
+    "FLOW_EVIDENCE_UNBOUND",
+    "FLOW_IN_EDGE_MISSING"
+  ]
+}

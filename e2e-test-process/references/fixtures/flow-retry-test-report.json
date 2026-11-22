@@ -1,0 +1,58 @@
+{
+  "schemaVersion": 1,
+  "requirement": "fixture：失败重试前向链（期望无 FLOW_* 告警）",
+  "env": "dev",
+  "reportDate": "2026-11-22",
+  "meta": { "branch": "fixture", "commit": "—", "carrier": "fixture", "executedAt": "—", "executor": "fixture" },
+  "verdict": { "publishable": true, "summary": "夹具：1/1 PASS", "conditions": [] },
+  "requirements": [{ "id": "REQ-1", "title": "夹具需求" }],
+  "cases": [
+    {
+      "id": "TC-001",
+      "title": "首次回调失败后重试成功",
+      "priority": "P0",
+      "verdict": "PASS",
+      "requirements": ["REQ-1"],
+      "layers": ["回调层", "数据层"],
+      "requirementStatement": "回调失败置 2 并重试，重试成功后置 1",
+      "assertions": [
+        { "expected": "claimStatus 最终为 1", "actual": "1", "layer": "数据层", "matches": true, "evidenceRef": "ev-ok" }
+      ],
+      "evidence": [
+        { "id": "ev-fail", "layer": "回调层", "command": "cat callback_log", "result": "connect refused", "request": { "clusterId": 1001 }, "response": { "error": "refused" }, "raw": null },
+        { "id": "ev-mark", "layer": "数据层", "command": "SELECT claimStatus, recordStatus FROM cf_product_delay_distribution_claim WHERE id=1", "result": "2 | 2", "raw": null },
+        { "id": "ev-qrtz", "layer": "数据层", "command": "SELECT TRIGGER_NAME FROM QRTZ_TRIGGERS WHERE TRIGGER_NAME LIKE 'pdd-retry-%'", "result": "pdd-retry-1", "raw": null },
+        { "id": "ev-cb2", "layer": "回调层", "command": "cat callback_log", "result": "HTTP 200", "request": { "clusterId": 1001 }, "response": { "code": 0 }, "raw": null },
+        { "id": "ev-ok", "layer": "数据层", "command": "SELECT claimStatus FROM cf_product_delay_distribution_claim WHERE id=1", "result": "1", "raw": null }
+      ],
+      "gaps": [],
+      "flow": {
+        "direction": "LR",
+        "nodes": [
+          { "id": "start", "type": "start", "label": "开始" },
+          { "id": "cb1", "type": "callback", "label": "回调下游(首次)", "detail": "连接被拒", "evidenceRefs": ["ev-fail"] },
+          { "id": "dec", "type": "decision", "label": "回调成功？", "detail": "本例走「失败」" },
+          { "id": "mark", "type": "service", "label": "claim/record 置 2", "detail": "CALLBACK_FAILED", "evidenceRefs": ["ev-mark"] },
+          { "id": "retry", "type": "schedule", "label": "retry-1 触发", "detail": "失败 +5min", "evidenceRefs": ["ev-qrtz"] },
+          { "id": "cb2", "type": "callback", "label": "回调下游(重试)", "detail": "HTTP 200 已受理", "evidenceRefs": ["ev-cb2"] },
+          { "id": "ok", "type": "service", "label": "claim/record 回到 1", "evidenceRefs": ["ev-ok"] },
+          { "id": "end", "type": "end", "label": "结束" }
+        ],
+        "edges": [
+          { "from": "start", "to": "cb1" },
+          { "from": "cb1", "to": "dec" },
+          { "from": "dec", "to": "mark", "label": "失败", "kind": "error" },
+          { "from": "mark", "to": "retry", "kind": "retry" },
+          { "from": "retry", "to": "cb2", "kind": "retry" },
+          { "from": "cb2", "to": "ok", "label": "成功", "kind": "success" },
+          { "from": "ok", "to": "end" }
+        ]
+      }
+    }
+  ],
+  "stats": { "byPriority": [{ "priority": "P0", "total": 1, "pass": 1, "fail": 0, "blocked": 0 }] },
+  "defects": [],
+  "notCovered": [],
+  "cleanup": { "method": "无（夹具）", "checkedItems": 1, "residual": 0, "detail": "夹具不构造数据" },
+  "conclusion": ["夹具：失败重试前向链渲染"]
+}

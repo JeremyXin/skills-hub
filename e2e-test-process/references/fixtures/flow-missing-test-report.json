@@ -1,0 +1,52 @@
+{
+  "schemaVersion": 1,
+  "requirement": "fixture：missing 节点（设计上本例不涉及的步骤，期望无 FLOW_* 告警）",
+  "env": "dev",
+  "reportDate": "2026-11-22",
+  "meta": { "branch": "fixture", "commit": "—", "carrier": "fixture", "executedAt": "—", "executor": "fixture" },
+  "verdict": { "publishable": true, "summary": "夹具：1/1 PASS", "conditions": [] },
+  "requirements": [{ "id": "REQ-1", "title": "夹具需求" }],
+  "cases": [
+    {
+      "id": "TC-001",
+      "title": "本例未触发回调，流程图中回调步骤标 missing",
+      "priority": "P0",
+      "verdict": "PASS",
+      "requirements": ["REQ-1"],
+      "layers": ["接口层", "数据层"],
+      "requirementStatement": "夹具：missing 节点渲染",
+      "assertions": [
+        { "expected": "HTTP 200", "actual": "HTTP 200", "layer": "接口层", "matches": true, "evidenceRef": "ev-save" }
+      ],
+      "evidence": [
+        { "id": "ev-save", "layer": "接口层", "command": "POST /product/save", "result": "HTTP 200", "raw": null },
+        { "id": "ev-cb", "layer": "回调层", "command": "cat callback_log", "result": "HTTP 200", "request": { "clusterId": 1001 }, "response": { "code": 0 }, "raw": null }
+      ],
+      "gaps": [],
+      "flow": {
+        "direction": "LR",
+        "nodes": [
+          { "id": "start", "type": "start", "label": "开始" },
+          { "id": "save", "type": "http", "label": "post(商品保存)", "detail": "POST /product/save", "evidenceRefs": ["ev-save"] },
+          { "id": "dec", "type": "decision", "label": "本例触发回调？", "detail": "本用例走「是」" },
+          { "id": "cb", "type": "callback", "label": "回调下游", "detail": "clusterId=1001", "evidenceRefs": ["ev-cb"] },
+          { "id": "cbMissing", "type": "missing", "label": "回调下游", "detail": "该分支未执行" },
+          { "id": "end", "type": "end", "label": "结束" }
+        ],
+        "edges": [
+          { "from": "start", "to": "save" },
+          { "from": "save", "to": "dec" },
+          { "from": "dec", "to": "cb", "label": "是" },
+          { "from": "dec", "to": "cbMissing", "label": "否" },
+          { "from": "cb", "to": "end" },
+          { "from": "cbMissing", "to": "end" }
+        ]
+      }
+    }
+  ],
+  "stats": { "byPriority": [{ "priority": "P0", "total": 1, "pass": 1, "fail": 0, "blocked": 0 }] },
+  "defects": [],
+  "notCovered": [],
+  "cleanup": { "method": "无（夹具）", "checkedItems": 1, "residual": 0, "detail": "夹具不构造数据" },
+  "conclusion": ["夹具：missing 节点渲染"]
+}

@@ -1,0 +1,56 @@
+{
+  "schemaVersion": 1,
+  "requirement": "fixture：线性链（期望无 FLOW_* 告警）",
+  "env": "dev",
+  "reportDate": "2026-11-22",
+  "meta": {
+    "branch": "fixture",
+    "commit": "—",
+    "carrier": "fixture",
+    "executedAt": "—",
+    "executor": "fixture"
+  },
+  "verdict": { "publishable": true, "summary": "夹具：1/1 PASS", "conditions": [] },
+  "requirements": [{ "id": "REQ-1", "title": "夹具需求" }],
+  "cases": [
+    {
+      "id": "TC-001",
+      "title": "线性链路：保存 → 落库 → 调度 → 结束",
+      "priority": "P0",
+      "verdict": "PASS",
+      "requirements": ["REQ-1"],
+      "layers": ["接口层", "数据层"],
+      "requirementStatement": "保存后落库并注册调度",
+      "assertions": [
+        { "expected": "record=1", "actual": "1", "layer": "接口层", "matches": true, "evidenceRef": "ev-save" }
+      ],
+      "evidence": [
+        { "id": "ev-save", "layer": "接口层", "command": "POST /product/save", "result": "HTTP 200", "raw": null },
+        { "id": "ev-row", "layer": "数据层", "command": "SELECT record FROM t WHERE id=1", "result": "1", "raw": null },
+        { "id": "ev-qrtz", "layer": "数据层", "command": "SELECT JOB_NAME FROM QRTZ_JOB_DETAILS WHERE JOB_NAME='pdd-product'", "result": "pdd-product", "raw": null }
+      ],
+      "gaps": [],
+      "flow": {
+        "direction": "LR",
+        "nodes": [
+          { "id": "start", "type": "start", "label": "开始" },
+          { "id": "save", "type": "http", "label": "post(商品保存)", "detail": "POST /product/save", "evidenceRefs": ["ev-save"] },
+          { "id": "row", "type": "sql", "label": "查询分发记录", "detail": "cf_product_delay_distribution_record", "evidenceRefs": ["ev-row"] },
+          { "id": "job", "type": "schedule", "label": "注册延迟 Job", "detail": "pdd-product", "evidenceRefs": ["ev-qrtz"] },
+          { "id": "end", "type": "end", "label": "结束" }
+        ],
+        "edges": [
+          { "from": "start", "to": "save" },
+          { "from": "save", "to": "row", "kind": "success" },
+          { "from": "row", "to": "job" },
+          { "from": "job", "to": "end" }
+        ]
+      }
+    }
+  ],
+  "stats": { "byPriority": [{ "priority": "P0", "total": 1, "pass": 1, "fail": 0, "blocked": 0 }] },
+  "defects": [],
+  "notCovered": [],
+  "cleanup": { "method": "无（夹具）", "checkedItems": 1, "residual": 0, "detail": "夹具不构造数据" },
+  "conclusion": ["夹具：线性链渲染"]
+}

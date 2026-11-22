@@ -1,0 +1,49 @@
+{
+  "schemaVersion": 1,
+  "requirement": "fixture：全量异常（期望 FLOW_BAD_DIRECTION / DUP_NODE_ID / NODE_UNKNOWN_TYPE / EDGE_ORPHAN / EVIDENCE_ORPHAN / EVIDENCE_UNBOUND / IN_EDGE_MISSING / NODE_NO_EVIDENCE）",
+  "env": "dev",
+  "reportDate": "2026-11-22",
+  "meta": { "branch": "fixture", "commit": "—", "carrier": "fixture", "executedAt": "—", "executor": "fixture" },
+  "verdict": { "publishable": true, "summary": "夹具：1/1 PASS", "conditions": [] },
+  "requirements": [{ "id": "REQ-1", "title": "夹具需求" }],
+  "cases": [
+    {
+      "id": "TC-001",
+      "title": "反例：flow 各类非法输入",
+      "priority": "P0",
+      "verdict": "PASS",
+      "requirements": ["REQ-1"],
+      "layers": ["接口层"],
+      "requirementStatement": "夹具：非法输入按兜底规则渲染并告警",
+      "assertions": [
+        { "expected": "HTTP 200", "actual": "HTTP 200", "layer": "接口层", "matches": true, "evidenceRef": "ev-save" }
+      ],
+      "evidence": [
+        { "id": "ev-save", "layer": "接口层", "command": "POST /product/save", "result": "HTTP 200", "raw": null },
+        { "id": "ev-unbound", "layer": "接口层", "command": "GET /product/get", "result": "HTTP 200", "raw": null }
+      ],
+      "gaps": [],
+      "flow": {
+        "direction": "XY",
+        "nodes": [
+          { "id": "start", "type": "start", "label": "开始" },
+          { "id": "save", "type": "http", "label": "post(商品保存)", "detail": "POST /product/save", "evidenceRefs": ["ev-save"] },
+          { "id": "save", "type": "http", "label": "重复 id 节点" },
+          { "id": "weird", "type": "fulfillment", "label": "未知类型节点" },
+          { "id": "ghostRef", "type": "service", "label": "引用不存在的证据", "evidenceRefs": ["ev-nope"] },
+          { "id": "lonely", "type": "service", "label": "没有入边的节点" }
+        ],
+        "edges": [
+          { "from": "start", "to": "save" },
+          { "from": "save", "to": "weird" },
+          { "from": "weird", "to": "ghost" }
+        ]
+      }
+    }
+  ],
+  "stats": { "byPriority": [{ "priority": "P0", "total": 1, "pass": 1, "fail": 0, "blocked": 0 }] },
+  "defects": [],
+  "notCovered": [],
+  "cleanup": { "method": "无（夹具）", "checkedItems": 1, "residual": 0, "detail": "夹具不构造数据" },
+  "conclusion": ["夹具：非法输入告警"]
+}

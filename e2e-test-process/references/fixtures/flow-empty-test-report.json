@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "requirement": "fixture：空 flow（期望 FLOW_EMPTY，且不渲染流程区块）",
+  "env": "dev",
+  "reportDate": "2026-11-22",
+  "meta": { "branch": "fixture", "commit": "—", "carrier": "fixture", "executedAt": "—", "executor": "fixture" },
+  "verdict": { "publishable": true, "summary": "夹具：1/1 PASS", "conditions": [] },
+  "requirements": [{ "id": "REQ-1", "title": "夹具需求" }],
+  "cases": [
+    {
+      "id": "TC-001",
+      "title": "反例：声明了 flow 但没有任何节点",
+      "priority": "P0",
+      "verdict": "PASS",
+      "requirements": ["REQ-1"],
+      "layers": ["接口层"],
+      "requirementStatement": "夹具：空 flow 回退到按层分组",
+      "assertions": [
+        { "expected": "HTTP 200", "actual": "HTTP 200", "layer": "接口层", "matches": true, "evidenceRef": "ev-save" }
+      ],
+      "evidence": [
+        { "id": "ev-save", "layer": "接口层", "command": "POST /product/save", "result": "HTTP 200", "raw": null }
+      ],
+      "gaps": [],
+      "flow": { "direction": "LR", "nodes": [], "edges": [] }
+    }
+  ],
+  "stats": { "byPriority": [{ "priority": "P0", "total": 1, "pass": 1, "fail": 0, "blocked": 0 }] },
+  "defects": [],
+  "notCovered": [],
+  "cleanup": { "method": "无（夹具）", "checkedItems": 1, "residual": 0, "detail": "夹具不构造数据" },
+  "conclusion": ["夹具：空 flow 告警"]
+}
