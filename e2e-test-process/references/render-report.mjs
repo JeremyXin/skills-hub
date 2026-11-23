@@ -955,6 +955,17 @@ function renderHtml(report, alarms, sourceName) {
   .ev-head code { color: var(--muted); }
   .ev-item:first-child .ev-head, .ev-head:first-child { margin-top: 0; padding-top: 0; border-top: 0; }
   .ev-ref { font-size: 11.5px; color: var(--dim); margin-top: 6px; }
+  .ev-at { font-family: var(--mono); font-size: 11px; color: var(--info); background: var(--info-bg); border-radius: 5px; padding: 1px 6px; white-space: nowrap; }
+  .ev-keys { display: flex; flex-wrap: wrap; gap: 5px; margin: 4px 0 2px; }
+  .ev-key { font-family: var(--mono); font-size: 10.5px; color: var(--dim); border: 1px solid var(--border); border-radius: 5px; padding: 1px 6px; white-space: nowrap; }
+  .ev-key b { color: var(--ink); font-weight: 600; margin-left: 3px; }
+  details.ev-raw { margin: 4px 0; }
+  details.ev-raw > summary { font-size: 11.5px; color: var(--muted); cursor: pointer; padding: 2px 0; }
+  details.ev-raw > pre { margin-top: 4px; }
+  .ev-jump { font-family: var(--mono); font-size: 11px; color: var(--info); cursor: pointer; text-decoration: underline dotted; display: inline-block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
+  .ev-jump:focus-visible { outline: 2px solid var(--info); outline-offset: 2px; }
+  .ev-item.flash { animation: ev-flash 1.5s ease-out; border-radius: 6px; }
+  @keyframes ev-flash { 0% { background: var(--info-bg); box-shadow: 0 0 0 3px color-mix(in srgb, var(--info) 30%, transparent); } 100% { background: transparent; box-shadow: none; } }
   .ev-missing { font-size: 12px; color: var(--muted); margin-top: 8px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
   .ev-chip { border: 1px dashed color-mix(in srgb, var(--warn) 55%, transparent); background: var(--warn-bg); color: var(--warn); border-radius: 6px; padding: 1px 7px; font-size: 11.5px; cursor: pointer; }
   .ev-chip.hl { box-shadow: 0 0 0 2px color-mix(in srgb, var(--warn) 40%, transparent); }
@@ -1247,18 +1258,35 @@ function renderHtml(report, alarms, sourceName) {
       '<div class="flow-hint">点击节点可定位到对应证据</div>';
   }
 
-  function evBody(e) {
+  function evBody(e, foldRaw) {
     var body = '';
     var req = payloadText(e.request), res = payloadText(e.response);
     if (req) body += '<div class="payload-label">请求</div><pre>' + esc(req) + '</pre>';
     if (res) body += '<div class="payload-label">响应</div><pre>' + esc(res) + '</pre>';
     if (e.command) body += '<pre>' + esc(e.command) + '</pre>';
     if (e.result) body += '<pre>' + esc(e.result) + '</pre>';
-    if (e.raw) body += '<pre>' + esc(e.raw) + '</pre>';
+    if (e.raw) {
+      // 去掉尾部空行再数行，避免 3 行内容因尾随换行被算成 4 行
+      var lines = String(e.raw).replace(/\\n+$/, '').split('\\n').length;
+      if (foldRaw && lines > 3) {
+        body += '<details class="ev-raw"><summary>原始输出 · ' + lines + ' 行</summary><pre>' + esc(e.raw) + '</pre></details>';
+      } else {
+        body += '<pre>' + esc(e.raw) + '</pre>';
+      }
+    }
     return body;
   }
   function evHead(e) {
-    return '<div class="ev-head"><code>' + esc(e.id) + '</code><span class="layer-tag">' + esc(e.layer || '其他') + '</span></div>';
+    var html = '<div class="ev-head"><code>' + esc(e.id) + '</code><span class="layer-tag">' + esc(e.layer || '其他') + '</span>';
+    if (e.at) html += '<span class="ev-at">' + esc(e.at) + '</span>';
+    html += '</div>';
+    var keys = e.keys && typeof e.keys === 'object' && !Array.isArray(e.keys) ? Object.keys(e.keys) : [];
+    if (keys.length) {
+      html += '<div class="ev-keys">' + keys.map(function (k) {
+        return '<span class="ev-key">' + esc(k) + '<b>' + esc(e.keys[k]) + '</b></span>';
+      }).join('') + '</div>';
+    }
+    return html;
   }
   // 无 flow 的旧报告沿用原 DOM（仅 body，无 id/层头），与改造前的输出保持一致
   function renderEvidenceByLayer(evs) {
@@ -1266,7 +1294,7 @@ function renderHtml(report, alarms, sourceName) {
     evs.forEach(function (e) { (byLayer[e.layer || '其他'] = byLayer[e.layer || '其他'] || []).push(e); });
     return Object.keys(byLayer).map(function (layer) {
       return '<details class="ev"><summary>' + esc(layer) + ' · ' + byLayer[layer].length + ' 项</summary>' +
-        byLayer[layer].map(evBody).join('') + '</details>';
+        byLayer[layer].map(function (e) { return evBody(e, false); }).join('') + '</details>';
     }).join('');
   }
   function renderEvidenceByNode(c, evs) {
@@ -1276,6 +1304,13 @@ function renderHtml(report, alarms, sourceName) {
     var html = (c.flow.nodes || []).map(function (n) {
       var refs = (n.evidenceRefs || []).filter(function (id) { return byId[id]; });
       if (!refs.length) return '';
+      refs.sort(function (a, b) {
+        var ta = byId[a].at, tb = byId[b].at;
+        if (!ta) return tb ? 1 : 0;
+        if (!tb) return -1;
+        ta = String(ta); tb = String(tb);
+        return ta < tb ? -1 : ta > tb ? 1 : 0;
+      });
       var layers = [];
       refs.forEach(function (id) {
         var l = byId[id].layer || '其他';
@@ -1287,7 +1322,7 @@ function renderHtml(report, alarms, sourceName) {
         refs.map(function (id) {
           if (seen[id]) return '<div class="ev-ref">同上一条证据 <code>' + esc(id) + '</code></div>';
           seen[id] = true;
-          return '<div class="ev-item">' + evHead(byId[id]) + evBody(byId[id]) + '</div>';
+          return '<div class="ev-item" data-ev-id="' + esc(id) + '">' + evHead(byId[id]) + evBody(byId[id], true) + '</div>';
         }).join('') + '</details>';
     }).join('');
 
@@ -1300,7 +1335,7 @@ function renderHtml(report, alarms, sourceName) {
     var unbound = evs.filter(function (e) { return !seen[e.id]; });
     if (unbound.length) {
       html += '<details class="ev"><summary>未挂载到流程节点的证据 · ' + unbound.length + ' 项</summary>' +
-        unbound.map(function (e) { return '<div class="ev-item">' + evHead(e) + evBody(e) + '</div>'; }).join('') + '</details>';
+        unbound.map(function (e) { return '<div class="ev-item" data-ev-id="' + esc(e.id) + '">' + evHead(e) + evBody(e, true) + '</div>'; }).join('') + '</details>';
     }
     return html;
   }
@@ -1330,15 +1365,27 @@ function renderHtml(report, alarms, sourceName) {
 
     // assertions
     var as = c.assertions || [];
+    var hasFlow = !!(c.flow && FLOW_LAYOUTS[c.id]);
+    var evIds = {};
+    (c.evidence || []).forEach(function (e) { evIds[e.id] = true; });
     html += '<div class="section-label" style="margin-top:16px">断言对照 · ' + as.length + ' 条</div>';
     if (!as.length) {
       html += '<div class="empty">没有断言——PASS 却无断言会被判为 blocker。</div>';
     } else {
-      html += '<table class="assert"><thead><tr><th style="width:38%">预期断言</th><th style="width:34%">实测</th><th style="width:16%">取证层</th><th style="width:12%">匹配</th></tr></thead><tbody>' +
+      var ths = hasFlow
+        ? '<th style="width:34%">预期断言</th><th style="width:30%">实测</th><th style="width:14%">取证层</th><th style="width:12%">证据</th><th style="width:10%">匹配</th>'
+        : '<th style="width:38%">预期断言</th><th style="width:34%">实测</th><th style="width:16%">取证层</th><th style="width:12%">匹配</th>';
+      html += '<table class="assert"><thead><tr>' + ths + '</tr></thead><tbody>' +
         as.map(function (a) {
           var bad = a.matches !== true || !String(a.actual || '').trim();
+          var evCell = '';
+          if (hasFlow) {
+            evCell = '<td>' + (a.evidenceRef && evIds[a.evidenceRef]
+              ? '<a class="ev-jump" role="button" tabindex="0" data-ev="' + esc(a.evidenceRef) + '" title="' + esc(a.evidenceRef) + '">' + esc(a.evidenceRef) + '</a>'
+              : '—') + '</td>';
+          }
           return '<tr class="' + (bad ? 'bad' : '') + '"><td>' + inlineMd(a.expected) + '</td><td class="mono">' + inlineMd(a.actual) +
-            '</td><td><span class="layer-tag">' + esc(a.layer || '—') + '</span></td><td class="mark ' + (bad ? 'bad' : 'ok') + '">' +
+            '</td><td><span class="layer-tag">' + esc(a.layer || '—') + '</span></td>' + evCell + '<td class="mark ' + (bad ? 'bad' : 'ok') + '">' +
             (bad ? '✕ 不一致' : '✓ 一致') + '</td></tr>';
         }).join('') + '</tbody></table>';
     }
@@ -1360,7 +1407,7 @@ function renderHtml(report, alarms, sourceName) {
     // evidence
     var evs = c.evidence || [];
     if (evs.length) {
-      var byNode = !!(c.flow && FLOW_LAYOUTS[c.id]);
+      var byNode = hasFlow;
       html += '<div class="section-label" style="margin-top:18px">原始证据 · ' + evs.length + ' 项' + (byNode ? ' · 按流程节点' : '') + '</div>';
       html += byNode ? renderEvidenceByNode(c, evs) : renderEvidenceByLayer(evs);
     }
@@ -1484,6 +1531,28 @@ function renderHtml(report, alarms, sourceName) {
             if (n.getAttribute('data-flow-node') === id) g = n;
           });
           if (g) g.scrollIntoView({ block: 'center', inline: 'center', behavior: 'smooth' });
+        });
+      });
+      Array.prototype.forEach.call(document.querySelectorAll('.ev-jump[data-ev]'), function (a) {
+        function jump(ev) {
+          ev.preventDefault();
+          var id = a.getAttribute('data-ev');
+          var item = null;
+          Array.prototype.forEach.call(document.querySelectorAll('.ev-item[data-ev-id]'), function (el) {
+            if (!item && el.getAttribute('data-ev-id') === id) item = el;
+          });
+          if (!item) return;
+          var box = item.closest('details');
+          if (box) box.open = true;
+          item.scrollIntoView({ block: 'center', behavior: 'smooth' });
+          item.classList.remove('flash');
+          void item.offsetWidth;
+          item.classList.add('flash');
+          setTimeout(function () { item.classList.remove('flash'); }, 1600);
+        }
+        a.addEventListener('click', jump);
+        a.addEventListener('keydown', function (ev) {
+          if (ev.key === 'Enter' || ev.key === ' ') jump(ev);
         });
       });
     } else {

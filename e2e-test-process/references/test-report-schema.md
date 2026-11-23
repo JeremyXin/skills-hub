@@ -42,7 +42,7 @@ node ~/.claude/skills/e2e-test-process/references/render-report.mjs <报告目�
 | `layers[]` | 是 | 声明的取证层；**层名由项目 skill 定义**（接口/日志/消息/数据/L0~L5 均可） |
 | `requirementStatement` | 是 | 该用例证明的需求口径，一句话 |
 | `assertions[]` | 是 | `{expected, actual, layer, matches, evidenceRef}`，**必须写实测值，不能只写「通过」** |
-| `evidence[]` | 是 | `{id, layer, command, result, request?, response?, raw?}` |
+| `evidence[]` | 是 | `{id, layer, command, result, at?, keys?, request?, response?, raw?}`；`at` 为证据发生时刻（`HH:mm:ss`，区间用 `a–b`），`keys` 为业务 key 对象（`{contactWa, productId, clusterId, ...}`），`raw` 为原始输出全文 |
 | `gaps[]` | 否 | 已知未被断言覆盖的点 |
 | `flow` | 否 | 用例级测试流程图，见 §4 |
 | `failureAnalysis` | FAIL 时必填 | `{layer, expected, actual, analysis, defectIds[]}` |
@@ -106,6 +106,14 @@ node ~/.claude/skills/e2e-test-process/references/render-report.mjs <报告目�
 - **重试画前向链**，不用回边：首次回调 → 判断 → 置失败态 → 排重试 → 重试触发 → 重试回调 → 成功。
   真回边虽可渲染，但会触发 `FLOW_CYCLE_BACKEDGE` 并绕过行间通道视觉语义。
 - `start`/`end`/`decision`/`missing` 天然不产生证据，不参与 `FLOW_NODE_NO_EVIDENCE` 判定。
+
+### 证据展示（有 `flow` 时）
+
+- 节点内证据**按 `at` 升序排列**，无 `at` 的排在最后；同一节点内的多条证据因此可按时序阅读。
+- 证据卡头展示 `id` + 取证层 + `at` 时刻，其下是 `keys` 业务 key 胶囊。
+- `raw` 超过 3 行时折叠为「原始输出 · N 行」，点击展开；≤3 行直接展示。
+- 断言表多一列「证据」：`evidenceRef` 可解析时渲染为可点击链接，点击会展开该证据所在折叠块并高亮。
+- 无 `flow` 的报告不产生上述任何 DOM 变化。
 
 ## 5. 报文原文
 
