@@ -9,8 +9,12 @@
  * --strict：存在 blocker 级告警时以退出码 1 结束（可作为提交前门禁）。
  *
  * 项目差异通过报告 JSON 顶层 reportConfig 声明，渲染器本身不含任何项目词：
- *   "reportConfig": { "payloadLayers": ["<层名1>", "<层名2>"] }
+ *   "reportConfig": {
+ *     "payloadLayers": ["<层名1>", "<层名2>"],
+ *     "columnSemantics": { "<列名>": { "label": "<中文表头>", "values": { "<原值>": ["<tone>", "<标签>"] } } }
+ *   }
  * payloadLayers：必须留 request/response 报文的层，层名由项目 skill 定义；未声明则不检查。
+ * columnSemantics：证据 tables 的列语义（表头中文名、枚举值着色标签，tone ∈ ok/bad/warn/info/dim）；未声明则显示原值。
  *
  * 约束：
  * - Markdown 是事实源，JSON 与 HTML 都是派生物；HTML 不得手工编辑。
@@ -617,6 +621,29 @@ function verify(report) {
     // 3b. 测试流程（可选；无 flow 的旧报告不产生任何新告警）
     verifyFlow(c, add, evIds);
 
+    // 3c. 结构化表格（可选）：tables 必须是数组，每张表 columns/rows 必须齐备且等长
+    for (const e of c.evidence || []) {
+      if (e.tables === undefined || e.tables === null) continue;
+      if (!Array.isArray(e.tables)) {
+        add('EVIDENCE_TABLE_INVALID', 'warn',
+          `${c.id} 的证据 ${e.id} 的 tables 不是数组`, [c.id]);
+        continue;
+      }
+      for (const t of e.tables) {
+        const cols = t && t.columns, rows = t && t.rows;
+        if (!Array.isArray(cols) || cols.length === 0 || !Array.isArray(rows)) {
+          add('EVIDENCE_TABLE_INVALID', 'warn',
+            `${c.id} 的证据 ${e.id} 有 table 缺 columns/rows 结构`, [c.id]);
+          continue;
+        }
+        const badRow = rows.findIndex((r) => !Array.isArray(r) || r.length !== cols.length);
+        if (badRow >= 0) {
+          add('EVIDENCE_TABLE_INVALID', 'warn',
+            `${c.id} 的证据 ${e.id} 表 ${t.name || '?'} 第 ${badRow + 1} 行值数与 columns（${cols.length}）不一致`, [c.id]);
+        }
+      }
+    }
+
     // 4. 多轮历史
     if (Array.isArray(c.history) && c.history.length) {
       const last = c.history[c.history.length - 1];
@@ -959,6 +986,28 @@ function renderHtml(report, alarms, sourceName) {
   .ev-keys { display: flex; flex-wrap: wrap; gap: 5px; margin: 4px 0 2px; }
   .ev-key { font-family: var(--mono); font-size: 10.5px; color: var(--dim); border: 1px solid var(--border); border-radius: 5px; padding: 1px 6px; white-space: nowrap; }
   .ev-key b { color: var(--ink); font-weight: 600; margin-left: 3px; }
+  .ev-table { margin: 6px 0; border: 1px solid var(--border); border-radius: 7px; overflow: hidden; }
+  .ev-table-cap { display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px; padding: 5px 9px; background: var(--panel-2); border-bottom: 1px solid var(--border); font-size: 11.5px; }
+  .ev-table-cap code { color: var(--ink-2); font-weight: 600; }
+  .ev-table-cap .ev-where { font-family: var(--mono); font-size: 10.5px; color: var(--dim); }
+  .ev-table-cap .ev-rows { margin-left: auto; color: var(--muted); white-space: nowrap; }
+  .ev-table-wrap { overflow-x: auto; }
+  .ev-table table { border-collapse: collapse; width: 100%; font-family: var(--mono); font-size: 11px; }
+  .ev-table th { text-align: left; font-weight: 600; color: var(--muted); padding: 5px 9px; border-bottom: 1px solid var(--border-strong); white-space: nowrap; }
+  .ev-table td { padding: 4px 9px; border-bottom: 1px solid var(--border); color: var(--ink-2); white-space: nowrap; }
+  .ev-table tr:last-child td { border-bottom: 0; }
+  .ev-table td.ev-num { text-align: right; }
+  .ev-table td.ev-null { color: var(--dim); text-align: center; }
+  .ev-st { font-family: var(--sans); font-size: 11px; border-radius: 5px; padding: 0 6px; white-space: nowrap; border: 1px solid var(--border); color: var(--muted); }
+  .ev-st.ok { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 45%, transparent); background: var(--ok-bg); }
+  .ev-st.bad { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 45%, transparent); background: var(--bad-bg); }
+  .ev-st.warn { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 45%, transparent); background: var(--warn-bg); }
+  .ev-st.info { color: var(--info); border-color: color-mix(in srgb, var(--info) 45%, transparent); background: var(--info-bg); }
+  .ev-st.dim { color: var(--dim); }
+  .ev-concl { font-size: 12px; color: var(--ink-2); margin: 6px 0 2px; }
+  details.ev-sql { margin: 4px 0 0; }
+  details.ev-sql > summary { font-size: 11.5px; color: var(--muted); cursor: pointer; padding: 2px 0; }
+  details.ev-sql > pre { margin-top: 4px; }
   details.ev-raw { margin: 4px 0; }
   details.ev-raw > summary { font-size: 11.5px; color: var(--muted); cursor: pointer; padding: 2px 0; }
   details.ev-raw > pre { margin-top: 4px; }
@@ -1258,13 +1307,52 @@ function renderHtml(report, alarms, sourceName) {
       '<div class="flow-hint">点击节点可定位到对应证据</div>';
   }
 
+  var COL_SEM = (REPORT.reportConfig && REPORT.reportConfig.columnSemantics) || {};
+
+  // 表格单元格：null 显示 ∅；命中列语义时显示彩色标签（title 保留原值）；数字右对齐；长值截断
+  function evCell(v, col) {
+    if (v === null || v === undefined) return '<td class="ev-null" title="null">∅</td>';
+    var meta = COL_SEM[col];
+    var hit = meta && meta.values && meta.values[String(v)];
+    if (hit) {
+      return '<td><span class="ev-st ' + esc(hit[0]) + '" title="' + esc(v) + '">' + esc(hit[1]) + '</span></td>';
+    }
+    var s = String(v);
+    if (typeof v === 'number') return '<td class="ev-num">' + esc(s) + '</td>';
+    if (s.length > 28) return '<td title="' + esc(s) + '">' + esc(s.slice(0, 27)) + '…</td>';
+    return '<td>' + esc(s) + '</td>';
+  }
+  function evTable(t, e) {
+    var cols = t.columns || [], rows = t.rows || [];
+    var head = cols.map(function (col) {
+      var meta = COL_SEM[col];
+      return '<th title="' + esc(col) + '">' + esc(meta && meta.label ? meta.label : col) + '</th>';
+    }).join('');
+    var body = rows.map(function (row) {
+      return '<tr>' + cols.map(function (col, i) { return evCell(row[i], col); }).join('') + '</tr>';
+    }).join('');
+    var html = '<div class="ev-table"><div class="ev-table-cap"><code>' + esc(t.name || '') + '</code>' +
+      (t.where ? '<span class="ev-where">' + esc(t.where) + '</span>' : '') +
+      '<span class="ev-rows">' + rows.length + ' 行</span></div>' +
+      '<div class="ev-table-wrap"><table><thead><tr>' + head + '</tr></thead><tbody>' + body + '</tbody></table></div></div>';
+    var sql = t.sql || e.command;
+    if (sql) html += '<details class="ev-sql"><summary>查看 SQL</summary><pre>' + esc(sql) + '</pre></details>';
+    return html;
+  }
   function evBody(e, foldRaw) {
     var body = '';
     var req = payloadText(e.request), res = payloadText(e.response);
     if (req) body += '<div class="payload-label">请求</div><pre>' + esc(req) + '</pre>';
     if (res) body += '<div class="payload-label">响应</div><pre>' + esc(res) + '</pre>';
-    if (e.command) body += '<pre>' + esc(e.command) + '</pre>';
-    if (e.result) body += '<pre>' + esc(e.result) + '</pre>';
+    var tables = Array.isArray(e.tables) ? e.tables : [];
+    if (tables.length) {
+      // 结构化表格已承载行值，command 不再平铺，result 只作结论行
+      body += tables.map(function (t) { return evTable(t, e); }).join('');
+      if (e.result) body += '<div class="ev-concl">' + esc(e.result) + '</div>';
+    } else {
+      if (e.command) body += '<pre>' + esc(e.command) + '</pre>';
+      if (e.result) body += '<pre>' + esc(e.result) + '</pre>';
+    }
     if (e.raw) {
       // 去掉尾部空行再数行，避免 3 行内容因尾随换行被算成 4 行
       var lines = String(e.raw).replace(/\\n+$/, '').split('\\n').length;

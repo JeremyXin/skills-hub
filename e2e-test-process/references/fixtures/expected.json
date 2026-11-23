@@ -2,7 +2,7 @@
   "flow-linear-test-report.json": [],
   "flow-branch-test-report.json": [],
   "flow-retry-test-report.json": [],
-  "flow-missing-test-report.json": [],
+  "flow-missing-test-report.json": ["LAYER_NO_EVIDENCE"],
   "flow-longlabel-test-report.json": [],
   "flow-backedge-test-report.json": ["FLOW_CYCLE_BACKEDGE"],
   "flow-empty-test-report.json": ["FLOW_EMPTY"],
@@ -15,5 +15,6 @@
     "FLOW_EVIDENCE_ORPHAN",
     "FLOW_EVIDENCE_UNBOUND",
     "FLOW_IN_EDGE_MISSING"
-  ]
+  ],
+  "table-test-report.json": ["EVIDENCE_TABLE_INVALID"]
 }

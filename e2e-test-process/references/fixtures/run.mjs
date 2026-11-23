@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * 夹具回归：对 fixtures 目录跑一遍渲染器，断言每份夹具产生的 FLOW_* 告警码集合与 expected.json 一致。
+ * 夹具回归：对 fixtures 目录跑一遍渲染器，断言每份夹具产生的告警码集合与 expected.json 一致。
  *
  * 用法：node ~/.claude/skills/e2e-test-process/references/fixtures/run.mjs
  * 退出码：0 全部一致；1 有差异。
@@ -31,7 +31,7 @@ for (const line of stdout.split('\n')) {
   const head = /^[✓⚠✕] (\S+-test-report\.json) → /.exec(line);
   if (head) { cur = head[1]; actual[cur] = new Set(); continue; }
   const alarm = /^\s{4}\[\w+\] ([A-Z][A-Z_]*):/.exec(line);
-  if (alarm && cur && alarm[1].startsWith('FLOW_')) actual[cur].add(alarm[1]);
+  if (alarm && cur) actual[cur].add(alarm[1]);
 }
 
 let failed = 0;
@@ -45,7 +45,7 @@ for (const [file, want] of Object.entries(expected)) {
   const wantSorted = [...want].sort();
   const same = got.length === wantSorted.length && got.every((c, i) => c === wantSorted[i]);
   if (same) {
-    console.log(`✓ ${file}: ${got.length ? got.join(', ') : '无 FLOW_* 告警'}`);
+    console.log(`✓ ${file}: ${got.length ? got.join(', ') : '无告警'}`);
   } else {
     console.error(`✕ ${file}\n    期望: ${wantSorted.join(', ') || '（无）'}\n    实际: ${got.join(', ') || '（无）'}`);
     failed++;

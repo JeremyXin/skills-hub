@@ -118,5 +118,5 @@ disable-model-invocation: true
 - `references/test-report-schema.md` — 可选：报告 JSON 契约、`reportConfig` 项目差异声明、`cases[].flow` 流程图、完整性告警规则。
 - `references/report-flow-design.md` — 可选：流程图排版约定（蛇形折行、可读性基线、形状映射、证据挂载）。
 - `references/render-report.mjs` — 可选：读取 JSON 生成自包含 HTML，`--strict` 时 blocker 退出码 1。
-- `references/fixtures/` — 可选：渲染器回归夹具（线性链 / 双分支 / 重试 / 回边 / 异常 / 空 flow）。
+- `references/fixtures/` — 可选：渲染器回归夹具（线性链 / 双分支 / 重试 / 回边 / 异常 / 空 flow / 结构化证据表格）。
 - `references/test-process-standard.md` — ISTQB 映射、入口/出口准则、可追溯矩阵、缺陷与回归、假阳性清单。

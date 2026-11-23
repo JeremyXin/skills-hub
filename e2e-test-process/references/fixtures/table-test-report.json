@@ -1,0 +1,110 @@
+{
+  "schemaVersion": 1,
+  "reportConfig": {
+    "columnSemantics": {
+      "claimStatus": { "label": "状态", "values": { "0": ["dim", "在途"], "1": ["ok", "成功"], "2": ["bad", "失败"] } },
+      "distributionSource": { "label": "来源", "values": { "PRODUCT_CLUSTER": ["info", "商品簇"], "AD_CLUSTER_FALLBACK": ["warn", "广告簇兜底"] } }
+    }
+  },
+  "requirement": "fixture：证据结构化表格（正常 + 非法）",
+  "env": "dev",
+  "reportDate": "2026-11-22",
+  "meta": {
+    "branch": "fixture",
+    "commit": "—",
+    "carrier": "fixture",
+    "executedAt": "—",
+    "executor": "fixture"
+  },
+  "verdict": { "publishable": true, "summary": "夹具：2/2 PASS", "conditions": [] },
+  "requirements": [{ "id": "REQ-1", "title": "夹具需求" }],
+  "cases": [
+    {
+      "id": "TC-001",
+      "title": "表格证据：列名 + 状态语义 + null",
+      "priority": "P0",
+      "verdict": "PASS",
+      "requirements": ["REQ-1"],
+      "layers": ["数据层"],
+      "requirementStatement": "表格证据应带列名、枚举语义与 null 区分",
+      "assertions": [
+        { "expected": "claimStatus=1", "actual": "1", "layer": "数据层", "matches": true, "evidenceRef": "ev-claim" }
+      ],
+      "evidence": [
+        {
+          "id": "ev-claim",
+          "layer": "数据层",
+          "command": "sql-query: SELECT ... FROM cf_claim WHERE contactWa='8613800000901'",
+          "result": "claim 1 行",
+          "at": "17:40:06",
+          "keys": { "contactWa": "8613800000901" },
+          "tables": [
+            {
+              "name": "cf_claim",
+              "where": "contactWa='8613800000901'",
+              "sql": "SELECT id, contactWa, claimStatus, distributionSource, failReason, productId FROM cf_claim WHERE contactWa='8613800000901'",
+              "columns": ["id", "contactWa", "claimStatus", "distributionSource", "failReason", "productId"],
+              "rows": [
+                [32, "8613800000901", 1, "PRODUCT_CLUSTER", null, "AUTOTEST_TABLE_FIXTURE_LONG_VALUE_XX"]
+              ]
+            },
+            {
+              "name": "cf_record",
+              "where": "contactWa='8613800000901'",
+              "columns": ["id", "contactWa", "productId"],
+              "rows": []
+            }
+          ],
+          "raw": null
+        }
+      ],
+      "gaps": []
+    },
+    {
+      "id": "TC-002",
+      "title": "表格证据：结构非法（缺 columns / 值数与列数不一致）",
+      "priority": "P1",
+      "verdict": "PASS",
+      "requirements": ["REQ-1"],
+      "layers": ["数据层"],
+      "requirementStatement": "缺 columns 或行值数与列数不一致的 table 应触发 EVIDENCE_TABLE_INVALID",
+      "assertions": [
+        { "expected": "告警包含 EVIDENCE_TABLE_INVALID", "actual": "EVIDENCE_TABLE_INVALID", "layer": "数据层", "matches": true, "evidenceRef": "ev-bad" }
+      ],
+      "evidence": [
+        {
+          "id": "ev-bad",
+          "layer": "数据层",
+          "command": "SELECT a, b FROM t",
+          "result": "2 列 1 行",
+          "tables": [
+            {
+              "name": "t",
+              "columns": ["a", "b"],
+              "rows": [[1]]
+            },
+            {
+              "name": "noCols",
+              "rows": [[1]]
+            }
+          ],
+          "raw": null
+        },
+        {
+          "id": "ev-bad2",
+          "layer": "数据层",
+          "command": "SELECT c FROM t2",
+          "result": "tables 非数组",
+          "tables": { "name": "t2" },
+          "raw": null
+        }
+      ],
+      "gaps": []
+    }
+  ],
+  "stats": { "byPriority": [{ "priority": "P0", "total": 1, "pass": 1, "fail": 0, "blocked": 0 }, { "priority": "P1", "total": 1, "pass": 1, "fail": 0, "blocked": 0 }] },
+  "defects": [],
+  "notCovered": [],
+  "cleanup": { "method": "无（夹具）", "checkedItems": 1, "residual": 0, "detail": "夹具不构造数据" },
+  "conclusion": ["夹具：结构化表格渲染与非法结构告警"]
+}

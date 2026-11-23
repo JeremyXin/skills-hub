@@ -42,7 +42,7 @@ node ~/.claude/skills/e2e-test-process/references/render-report.mjs <报告目�
 | `layers[]` | 是 | 声明的取证层；**层名由项目 skill 定义**（接口/日志/消息/数据/L0~L5 均可） |
 | `requirementStatement` | 是 | 该用例证明的需求口径，一句话 |
 | `assertions[]` | 是 | `{expected, actual, layer, matches, evidenceRef}`，**必须写实测值，不能只写「通过」** |
-| `evidence[]` | 是 | `{id, layer, command, result, at?, keys?, request?, response?, raw?}`；`at` 为证据发生时刻（`HH:mm:ss`，区间用 `a–b`），`keys` 为业务 key 对象（`{contactWa, productId, clusterId, ...}`），`raw` 为原始输出全文 |
+| `evidence[]` | 是 | `{id, layer, command, result, at?, keys?, request?, response?, raw?, tables?}`；`at` 为证据发生时刻（`HH:mm:ss`，区间用 `a–b`），`keys` 为业务 key 对象（`{contactWa, productId, clusterId, ...}`），`raw` 为原始输出全文，`tables` 为结构化查询结果（可多条），见 §3.1 |
 | `gaps[]` | 否 | 已知未被断言覆盖的点 |
 | `flow` | 否 | 用例级测试流程图，见 §4 |
 | `failureAnalysis` | FAIL 时必填 | `{layer, expected, actual, analysis, defectIds[]}` |
@@ -54,16 +54,53 @@ node ~/.claude/skills/e2e-test-process/references/render-report.mjs <报告目�
 
 ```json
 "reportConfig": {
-  "payloadLayers": ["接口层", "回调层"]
+  "payloadLayers": ["接口层", "回调层"],
+  "columnSemantics": {
+    "claimStatus": { "label": "状态", "values": { "0": ["dim", "在途"], "1": ["ok", "成功"], "2": ["bad", "失败"] } }
+  }
 }
 ```
 
 | 字段 | 说明 |
 |---|---|
 | `payloadLayers` | 必须留 `request` / `response` 原文的层名数组；未声明时为空，不检查报文 |
+| `columnSemantics` | `evidence[].tables[]` 的列语义：`label` 为表头中文名（缺省用列名），`values` 为枚举值 → `[tone, 标签]`（`tone` ∈ `ok/bad/warn/info/dim`）；未声明则原样展示 |
 
 服务端项目通常声明接口层与回调层；推理管线项目可声明 `L0 契约/进程`、`L2 IR` 等。
 断言实测为「未发生」（0 次 / 无行 / 不存在）时该层豁免。
+
+### 3.1 结构化证据表格（`evidence[].tables[]`，可选）
+
+数据库/接口返回的二维结果默认只有值、没有列名，读起来只能靠位置猜。声明 `tables` 后按表格渲染，一条证据可挂多张表：
+
+```json
+{
+  "id": "ev-TC-001-db",
+  "layer": "数据层",
+  "command": "sql-query doris_wmt: 查询 claim 与 record",
+  "result": "claim 1 行（成功）、record 1 行（成功）",
+  "tables": [
+    {
+      "name": "cf_product_delay_distribution_claim",
+      "where": "contactWa='8613800000901'",
+      "sql": "SELECT id, contactWa, claimStatus, ... FROM cf_claim WHERE contactWa='8613800000901'",
+      "columns": ["id", "contactWa", "claimStatus", "failReason", "updateTime"],
+      "rows": [[32, "8613800000901", 1, null, "2026-11-22T17:40:06"]]
+    }
+  ]
+}
+```
+
+| 字段 | 必填 | 说明 |
+|---|---|---|
+| `name` | 是 | 表名（caption 显示），`rows` 为空时仍显示「0 行」 |
+| `columns[]` | 是 | 列名，顺序与行值一致；命中 `columnSemantics` 时表头显示 `label` |
+| `rows[][]` | 是 | 每个数组长度必须等于 `columns.length`，否则告警 `EVIDENCE_TABLE_INVALID` |
+| `where` | 否 | 查询条件摘要（caption 显示） |
+| `sql` | 否 | 该表的完整 SQL，收进「查看 SQL」折叠块；缺省回退到 `evidence.command` |
+
+渲染约定：`null` 显示为灰色 `∅`（与字符串 `"null"` 区分）、数字右对齐、超过 28 字符截断并把全文放进 `title`、命中 `columnSemantics.values` 的值显示为彩色标签（`title` 保留原值）。
+声明 `tables` 后 `command` 不再平铺显示，`result` 只作为表格下方的结论行——原始数组不要放 `result`。取证后表可能被后续操作改写（如重试把失败态覆盖为成功态）时，`tables` 必须用**取证时刻的快照值**并在 `raw` 保留原文，不能用事后重查的结果顶替。
 
 ## 4. 测试流程（`cases[].flow`，可选）
 
@@ -141,6 +178,7 @@ node ~/.claude/skills/e2e-test-process/references/render-report.mjs <报告目�
 | `HISTORY_FINAL_MISMATCH` | `history` 最后一轮与 `verdict` 不一致 | blocker |
 | `EVIDENCE_ORPHAN` | `evidenceRef` 指向不存在的证据 | warn |
 | `EVIDENCE_NO_PAYLOAD` | `payloadLayers` 中的层缺 `request`/`response` 报文 | warn |
+| `EVIDENCE_TABLE_INVALID` | `evidence[].tables` 不是数组，或其 `columns`/`rows` 缺失，或某行值数与列数不一致 | warn |
 | `CLEANUP_UNVERIFIED` | `cleanup.residual` 缺失或 `checkedItems=0` | warn |
 
 流程相关告警**仅在用例声明了 `flow` 时触发**，全部为 warn，按「用例 + 规则」聚合成一条：

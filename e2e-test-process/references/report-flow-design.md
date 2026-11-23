@@ -92,7 +92,7 @@ SVG 通过 `viewBox` **等比铺满容器**：
 ## 8. 回归方式
 
 ```bash
-# 1. fixtures 自动回归：断言每份夹具的 FLOW_* 告警码集合与 expected.json 一致，退出码非 0 即失败
+# 1. fixtures 自动回归：断言每份夹具的告警码集合与 expected.json 一致，退出码非 0 即失败
 node ~/.claude/skills/e2e-test-process/references/fixtures/run.mjs
 
 # 2. 真实报告：新告警必须清零，旧报告（无 flow）告警输出与改造前逐行一致
