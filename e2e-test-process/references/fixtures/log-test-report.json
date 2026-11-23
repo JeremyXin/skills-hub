@@ -1,0 +1,100 @@
+{
+  "schemaVersion": 1,
+  "reportConfig": {
+    "logHighlight": ["[ORDER][SKIP]", "reason=", "取消成功"]
+  },
+  "requirement": "fixture：日志证据级别着色与关键行高亮",
+  "env": "dev",
+  "reportDate": "2026-11-23",
+  "meta": {
+    "branch": "fixture",
+    "commit": "—",
+    "carrier": "fixture",
+    "executedAt": "—",
+    "executor": "fixture"
+  },
+  "verdict": { "publishable": true, "summary": "夹具：3/3 PASS", "conditions": [] },
+  "requirements": [{ "id": "REQ-1", "title": "夹具需求" }],
+  "cases": [
+    {
+      "id": "TC-001",
+      "title": "长日志：关键行提到折叠块外，全文按级别着色",
+      "priority": "P0",
+      "verdict": "PASS",
+      "requirements": ["REQ-1"],
+      "layers": ["日志层"],
+      "requirementStatement": "7 行日志中命中的 2 行应在折叠块外预览，展开后仍高亮",
+      "assertions": [
+        { "expected": "日志含 [ORDER][SKIP]", "actual": "[ORDER][SKIP] reason=SAME_CLUSTER", "layer": "日志层", "matches": true, "evidenceRef": "ev-log-hit" }
+      ],
+      "evidence": [
+        {
+          "id": "ev-log-hit",
+          "layer": "日志层",
+          "command": "服务端应用日志",
+          "result": "命中 2 条关键行",
+          "at": "10:00:00–10:00:06",
+          "raw": "2026-11-23 10:00:00.100 DEBUG 1 --- [http-nio-exec-1] OrderScheduleService[302] : [ORDER][JOB] 删除兜底 Job orderId=FIXTURE_1, removed=false\n2026-11-23 10:00:00.200  INFO 1 --- [http-nio-exec-1] OrderScheduleService[163] : [ORDER][JOB] 订单调度已排 orderId=FIXTURE_1, level=B\n2026-11-23 10:00:05.300  WARN 1 --- [order-worker-1] OrderDecisionService[147] : [ORDER][JOB] 商品 startTime 为空, 按当前时间起算\n2026-11-23 10:00:05.400  INFO 1 --- [order-worker-1] OrderDecisionService[155] : [ORDER][SKIP] reason=SAME_CLUSTER orderId=FIXTURE_1\n2026-11-23 10:00:05.401 DEBUG 1 --- [order-worker-1] OrderDecisionService[304] : [ORDER][SUCCESS] orderId=FIXTURE_1\n2026-11-23 10:00:05.402  INFO 1 --- [order-worker-1] OrderDecisionService[213] : [ORDER][CLUSTER] 簇处理完成 orderId=FIXTURE_1, total=1, success=1\n2026-11-23 10:00:06.500  INFO 1 --- [http-nio-exec-2] OrderScheduleService[280] : [ORDER][JOB] 取消兜底 取消成功 orderId=FIXTURE_1"
+        }
+      ],
+      "flow": {
+        "nodes": [
+          { "id": "start", "type": "start", "label": "开始" },
+          { "id": "save", "type": "http", "label": "保存", "evidenceRefs": ["ev-log-hit"] }
+        ],
+        "edges": [{ "from": "start", "to": "save" }]
+      },
+      "gaps": []
+    },
+    {
+      "id": "TC-002",
+      "title": "短日志：不折叠；全局规则 + 证据级补充同时命中",
+      "priority": "P0",
+      "verdict": "PASS",
+      "requirements": ["REQ-1"],
+      "layers": ["日志层"],
+      "requirementStatement": "≤3 行的日志直接展开显示，证据级 highlight 补充的规则也生效",
+      "assertions": [
+        { "expected": "reason=E_RATING", "actual": "reason=E_RATING", "layer": "日志层", "matches": true, "evidenceRef": "ev-log-short" }
+      ],
+      "evidence": [
+        {
+          "id": "ev-log-short",
+          "layer": "日志层",
+          "command": "服务端应用日志",
+          "result": "2 条关键行（1 条全局 + 1 条证据级）",
+          "highlight": ["[ORDER][CLUSTER]"],
+          "raw": "2026-11-23 10:01:00.100  INFO 1 --- [x] OrderService[10] : [ORDER][SKIP] reason=E_RATING orderId=FIXTURE_2\n2026-11-23 10:01:00.200 DEBUG 1 --- [x] OrderService[11] : [ORDER][CLUSTER] 处理完成"
+        }
+      ],
+      "gaps": []
+    },
+    {
+      "id": "TC-003",
+      "title": "非日志 raw：保持原样 pre 渲染",
+      "priority": "P1",
+      "verdict": "PASS",
+      "requirements": ["REQ-1"],
+      "layers": ["数据层"],
+      "requirementStatement": "识别不出日志格式的 raw 不套日志样式",
+      "assertions": [
+        { "expected": "1 行结果", "actual": "[[32,'8613800000902',1]]", "layer": "数据层", "matches": true, "evidenceRef": "ev-plain" }
+      ],
+      "evidence": [
+        {
+          "id": "ev-plain",
+          "layer": "数据层",
+          "command": "sql-query: SELECT id, contactWa, claimStatus FROM cf_demo",
+          "result": "1 行",
+          "raw": "[[32,'8613800000902',1]]"
+        }
+      ],
+      "gaps": []
+    }
+  ],
+  "stats": { "byPriority": [{ "priority": "P0", "total": 2, "pass": 2, "fail": 0, "blocked": 0 }, { "priority": "P1", "total": 1, "pass": 1, "fail": 0, "blocked": 0 }] },
+  "defects": [],
+  "notCovered": [],
+  "cleanup": { "method": "无（夹具）", "checkedItems": 1, "residual": 0, "detail": "夹具不构造数据" },
+  "conclusion": ["夹具：日志级别着色、关键行预览与非日志 raw 回退"]
+}

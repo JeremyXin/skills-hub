@@ -19,5 +19,7 @@ node ~/.claude/skills/e2e-test-process/references/fixtures/run.mjs
 | `flow-invalid-test-report.json` | 未知类型、重复 id、孤儿边、证据孤儿、未绑定证据、无入边、非法 direction | 8 个 `FLOW_*` 告警 |
 | `flow-empty-test-report.json` | 空 nodes 回退到按层分组 | `FLOW_EMPTY` |
 | `table-test-report.json` | 证据 `tables[]`：列语义标签、`∅`、长值截断、空表；非法结构（缺 columns / 行值数与列数不一致 / tables 非数组） | `EVIDENCE_TABLE_INVALID` |
+| `log-test-report.json` | 日志证据：级别着色、关键行提到折叠外预览、证据级 `highlight` 补充、非日志 raw 回退 `<pre>` | 无告警 |
+| `log-invalid-test-report.json` | `reportConfig.logHighlight` 与 `evidence.highlight` 非字符串数组 | `LOG_HIGHLIGHT_INVALID` |
 
 生成的 `.html` 是临时产物，已被本目录 `.gitignore` 忽略。

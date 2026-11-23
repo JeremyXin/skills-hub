@@ -42,7 +42,7 @@ node ~/.claude/skills/e2e-test-process/references/render-report.mjs <报告目�
 | `layers[]` | 是 | 声明的取证层；**层名由项目 skill 定义**（接口/日志/消息/数据/L0~L5 均可） |
 | `requirementStatement` | 是 | 该用例证明的需求口径，一句话 |
 | `assertions[]` | 是 | `{expected, actual, layer, matches, evidenceRef}`，**必须写实测值，不能只写「通过」** |
-| `evidence[]` | 是 | `{id, layer, command, result, at?, keys?, request?, response?, raw?, tables?}`；`at` 为证据发生时刻（`HH:mm:ss`，区间用 `a–b`），`keys` 为业务 key 对象（`{contactWa, productId, clusterId, ...}`），`raw` 为原始输出全文，`tables` 为结构化查询结果（可多条），见 §3.1 |
+| `evidence[]` | 是 | `{id, layer, command, result, at?, keys?, request?, response?, raw?, tables?, highlight?}`；`at` 为证据发生时刻（`HH:mm:ss`，区间用 `a–b`），`keys` 为业务 key 对象（`{contactWa, productId, clusterId, ...}`），`raw` 为原始输出全文，`tables` 为结构化查询结果（可多条，见 §3.1），`highlight` 为该证据的关键行补充匹配串（见 §3.2） |
 | `gaps[]` | 否 | 已知未被断言覆盖的点 |
 | `flow` | 否 | 用例级测试流程图，见 §4 |
 | `failureAnalysis` | FAIL 时必填 | `{layer, expected, actual, analysis, defectIds[]}` |
@@ -57,7 +57,8 @@ node ~/.claude/skills/e2e-test-process/references/render-report.mjs <报告目�
   "payloadLayers": ["接口层", "回调层"],
   "columnSemantics": {
     "claimStatus": { "label": "状态", "values": { "0": ["dim", "在途"], "1": ["ok", "成功"], "2": ["bad", "失败"] } }
-  }
+  },
+  "logHighlight": ["[XXX][SKIP]", "[XXX][FAIL]", "reason="]
 }
 ```
 
@@ -65,6 +66,7 @@ node ~/.claude/skills/e2e-test-process/references/render-report.mjs <报告目�
 |---|---|
 | `payloadLayers` | 必须留 `request` / `response` 原文的层名数组；未声明时为空，不检查报文 |
 | `columnSemantics` | `evidence[].tables[]` 的列语义：`label` 为表头中文名（缺省用列名），`values` 为枚举值 → `[tone, 标签]`（`tone` ∈ `ok/bad/warn/info/dim`）；未声明则原样展示 |
+| `logHighlight` | 日志证据的**全局关键行匹配串**（字面子串，非正则）；命中行加粗 + 左侧色条 + 淡背景，日志过长折叠时还会提到折叠块外预览。未声明则只按日志级别着色 |
 
 服务端项目通常声明接口层与回调层；推理管线项目可声明 `L0 契约/进程`、`L2 IR` 等。
 断言实测为「未发生」（0 次 / 无行 / 不存在）时该层豁免。
@@ -101,6 +103,24 @@ node ~/.claude/skills/e2e-test-process/references/render-report.mjs <报告目�
 
 渲染约定：`null` 显示为灰色 `∅`（与字符串 `"null"` 区分）、数字右对齐、超过 28 字符截断并把全文放进 `title`、命中 `columnSemantics.values` 的值显示为彩色标签（`title` 保留原值）。
 声明 `tables` 后 `command` 不再平铺显示，`result` 只作为表格下方的结论行——原始数组不要放 `result`。取证后表可能被后续操作改写（如重试把失败态覆盖为成功态）时，`tables` 必须用**取证时刻的快照值**并在 `raw` 保留原文，不能用事后重查的结果顶替。
+
+### 3.2 日志证据的关键行（`reportConfig.logHighlight` + `evidence[].highlight`）
+
+用于「日志层」这类原文很长的证据：一边按日志级别着色，一边把与用例结论直接相关的行挑出来。
+
+- **级别着色**：`raw` 中能解析出 `<时间> <LEVEL>` 头（Spring 等常见格式）的行会渲染成带级别徽章的独立行，DEBUG 灰化、INFO 正常、WARN 黄、ERROR/FATAL 红；解析不出的行原样展示。整段没有一行能解析成日志时，保持原来的 `<pre>` 渲染。该渲染对**所有**含日志头的 `raw` 生效（含未声明 `logHighlight`、未写 `flow` 的报告）；只有不含日志头的旧报告 DOM 不变。
+- **关键行**：全局 `reportConfig.logHighlight` 与证据级 `evidence.highlight` 里的**字面子串**任一命中即算关键行。命中行加粗、带左侧色条与淡背景；若原文超过 3 行被折叠，命中的行会**提到折叠块外预览**，折叠标题显示「原始输出 · N 行 · 关键 M 行」。
+- 全局列表放跨用例通用的判定/异常标签（如 `[XXX][SKIP]`、`[XXX][FAIL]`）；只对个别用例成立的规则（如某接口特有的成功标记）写在证据上，避免全局匹配面过宽让高亮失去区分度。
+
+```jsonc
+// reportConfig
+"logHighlight": ["[延迟分发][SKIP]", "[延迟分发][FAIL]", "[延迟分发][DECIDE]"]
+
+// 个别证据补充
+{ "id": "ev-TC-011-log", "layer": "日志层", "highlight": ["removed=true"], "raw": "..." }
+```
+
+匹配是字面包含，不走正则；传非字符串数组时配置被忽略并告警 `LOG_HIGHLIGHT_INVALID`。
 
 ## 4. 测试流程（`cases[].flow`，可选）
 
@@ -179,6 +199,7 @@ node ~/.claude/skills/e2e-test-process/references/render-report.mjs <报告目�
 | `EVIDENCE_ORPHAN` | `evidenceRef` 指向不存在的证据 | warn |
 | `EVIDENCE_NO_PAYLOAD` | `payloadLayers` 中的层缺 `request`/`response` 报文 | warn |
 | `EVIDENCE_TABLE_INVALID` | `evidence[].tables` 不是数组，或其 `columns`/`rows` 缺失，或某行值数与列数不一致 | warn |
+| `LOG_HIGHLIGHT_INVALID` | `reportConfig.logHighlight` 或 `evidence[].highlight` 不是非空字符串数组（配置被忽略） | warn |
 | `CLEANUP_UNVERIFIED` | `cleanup.residual` 缺失或 `checkedItems=0` | warn |
 
 流程相关告警**仅在用例声明了 `flow` 时触发**，全部为 warn，按「用例 + 规则」聚合成一条：

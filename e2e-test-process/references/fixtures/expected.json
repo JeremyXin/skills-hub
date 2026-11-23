@@ -16,5 +16,7 @@
     "FLOW_EVIDENCE_UNBOUND",
     "FLOW_IN_EDGE_MISSING"
   ],
-  "table-test-report.json": ["EVIDENCE_TABLE_INVALID"]
+  "table-test-report.json": ["EVIDENCE_TABLE_INVALID"],
+  "log-test-report.json": [],
+  "log-invalid-test-report.json": ["LOG_HIGHLIGHT_INVALID"]
 }

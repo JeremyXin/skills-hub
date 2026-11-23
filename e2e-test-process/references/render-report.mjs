@@ -623,6 +623,15 @@ function verify(report) {
 
     // 3c. 结构化表格（可选）：tables 必须是数组，每张表 columns/rows 必须齐备且等长
     for (const e of c.evidence || []) {
+      // 证据级关键行补充规则同样是字符串数组
+      if (e.highlight !== undefined) {
+        const ok = Array.isArray(e.highlight)
+          && e.highlight.every((s) => typeof s === 'string' && s.length > 0);
+        if (!ok) {
+          add('LOG_HIGHLIGHT_INVALID', 'warn',
+            `${c.id} 的证据 ${e.id} 的 highlight 必须是非空字符串数组，当前配置已忽略`, [c.id]);
+        }
+      }
       if (e.tables === undefined || e.tables === null) continue;
       if (!Array.isArray(e.tables)) {
         add('EVIDENCE_TABLE_INVALID', 'warn',
@@ -672,6 +681,16 @@ function verify(report) {
       add('EVIDENCE_NO_PAYLOAD', 'warn',
         `${lacking.length} 条用例的${layer}证据未记录请求/响应报文：${lacking.map((c) => c.id).join('、')}`,
         lacking.map((c) => c.id));
+    }
+  }
+
+  // 5b. 日志关键行声明必须是字符串数组（非数组按无配置处理，但要提示）
+  if (report.reportConfig && report.reportConfig.logHighlight !== undefined) {
+    const lh = report.reportConfig.logHighlight;
+    const ok = Array.isArray(lh) && lh.every((s) => typeof s === 'string' && s.length > 0);
+    if (!ok) {
+      add('LOG_HIGHLIGHT_INVALID', 'warn',
+        'reportConfig.logHighlight 必须是非空字符串数组，当前配置已忽略');
     }
   }
 
@@ -1011,6 +1030,28 @@ function renderHtml(report, alarms, sourceName) {
   details.ev-raw { margin: 4px 0; }
   details.ev-raw > summary { font-size: 11.5px; color: var(--muted); cursor: pointer; padding: 2px 0; }
   details.ev-raw > pre { margin-top: 4px; }
+  /* 日志证据：按级别着色；logHighlight 命中的行加粗并带左侧色条 */
+  .ev-log { background: var(--panel-2); border: 1px solid var(--border); border-radius: 7px; padding: 7px 9px; overflow: auto; font-family: var(--mono); font-size: 11.5px; line-height: 1.6; margin: 8px 0 0; }
+  .lg-line { white-space: pre-wrap; word-break: break-word; padding: 1px 5px; border-left: 2px solid transparent; border-radius: 3px; }
+  .lg-ts { color: var(--dim); }
+  .lg-lv { display: inline-block; min-width: 42px; margin: 0 7px 0 5px; padding: 0 5px; border-radius: 4px; font-size: 10px; font-weight: 700; text-align: center; letter-spacing: .04em; }
+  .lg-lv.debug { color: var(--muted); background: color-mix(in srgb, var(--dim) 16%, transparent); }
+  .lg-lv.info { color: var(--info); background: var(--info-bg); }
+  .lg-lv.warn { color: var(--warn); background: var(--warn-bg); }
+  .lg-lv.error, .lg-lv.fatal { color: var(--bad); background: var(--bad-bg); }
+  .lg-pre { color: var(--muted); }
+  .lg-msg { color: var(--ink); }
+  .lg-line.lv-debug .lg-msg { color: var(--muted); }
+  .lg-line.lv-warn .lg-msg { color: var(--warn); }
+  .lg-line.lv-error .lg-msg, .lg-line.lv-fatal .lg-msg { color: var(--bad); }
+  .lg-line.lg-hit { background: var(--info-bg); border-left-color: var(--info); }
+  .lg-line.lg-hit .lg-msg { color: var(--ink); font-weight: 700; }
+  .lg-line.lg-hit.lv-warn { background: var(--warn-bg); border-left-color: var(--warn); }
+  .lg-line.lg-hit.lv-error, .lg-line.lg-hit.lv-fatal { background: var(--bad-bg); border-left-color: var(--bad); }
+  .lg-key { margin: 8px 0 0; border: 1px solid color-mix(in srgb, var(--info) 35%, var(--border)); border-radius: 7px; background: var(--panel-2); overflow: hidden; }
+  .lg-key-cap { font-size: 10.5px; font-weight: 600; letter-spacing: .08em; color: var(--info); background: var(--info-bg); padding: 3px 10px; border-bottom: 1px solid color-mix(in srgb, var(--info) 25%, var(--border)); }
+  .lg-key > .lg-line { margin: 4px 8px; }
+  .lg-key > .lg-line:last-child { margin-bottom: 7px; }
   .ev-jump { font-family: var(--mono); font-size: 11px; color: var(--info); cursor: pointer; text-decoration: underline dotted; display: inline-block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
   .ev-jump:focus-visible { outline: 2px solid var(--info); outline-offset: 2px; }
   .ev-item.flash { animation: ev-flash 1.5s ease-out; border-radius: 6px; }
@@ -1308,6 +1349,46 @@ function renderHtml(report, alarms, sourceName) {
   }
 
   var COL_SEM = (REPORT.reportConfig && REPORT.reportConfig.columnSemantics) || {};
+  // 报告声明的关键行匹配串（字面子串），命中行在日志证据里加粗高亮
+  var LOG_HIGHLIGHT = (function () {
+    var v = REPORT.reportConfig && REPORT.reportConfig.logHighlight;
+    return Array.isArray(v) ? v.filter(function (s) { return typeof s === 'string' && s.length > 0; }) : [];
+  })();
+  // 常见日志头：<时间> <级别> <其余>；解析不出时整行按普通文本输出
+  var LOG_LEVEL_RE = /^(\\d{4}-\\d{2}-\\d{2}[ T][\\d:.,]+)\\s+(TRACE|DEBUG|INFO|WARN|ERROR|FATAL)\\s+([\\s\\S]*)$/;
+
+  function isLogHit(line, pats) {
+    for (var i = 0; i < pats.length; i++) {
+      if (line.indexOf(pats[i]) >= 0) return true;
+    }
+    return false;
+  }
+  // 全局 logHighlight 与证据级 highlight 合并，后者用于个别证据的补充规则
+  function evHighlights(e) {
+    var own = e && Array.isArray(e.highlight)
+      ? e.highlight.filter(function (s) { return typeof s === 'string' && s.length > 0; })
+      : [];
+    return own.length ? LOG_HIGHLIGHT.concat(own) : LOG_HIGHLIGHT;
+  }
+  function logLine(line, forceHit) {
+    var m = LOG_LEVEL_RE.exec(line);
+    var lv = m ? m[2].toLowerCase() : '';
+    var cls = 'lg-line' + (lv ? ' lv-' + lv : '') + (forceHit ? ' lg-hit' : '');
+    var inner;
+    if (m) {
+      // Spring 日志把线程/logger 放在 "] : " 之前，之后才是正文；级别/行号右对齐会有多个空格
+      var rest = m[3], pre = '', msg = rest;
+      var sep = /^([\\s\\S]*?\\]\\s+:\\s)([\\s\\S]*)$/.exec(rest);
+      if (sep) { pre = sep[1]; msg = sep[2]; }
+      inner = '<span class="lg-ts">' + esc(m[1]) + '</span>' +
+        '<span class="lg-lv ' + lv + '">' + esc(m[2]) + '</span>' +
+        (pre ? '<span class="lg-pre">' + esc(pre) + '</span>' : '') +
+        '<span class="lg-msg">' + (esc(msg) || '&#8203;') + '</span>';
+    } else {
+      inner = '<span class="lg-msg">' + (esc(line) || '&#8203;') + '</span>';
+    }
+    return '<div class="' + cls + '">' + inner + '</div>';
+  }
 
   // 表格单元格：null 显示 ∅；命中列语义时显示彩色标签（title 保留原值）；数字右对齐；长值截断
   function evCell(v, col) {
@@ -1354,10 +1435,27 @@ function renderHtml(report, alarms, sourceName) {
       if (e.result) body += '<pre>' + esc(e.result) + '</pre>';
     }
     if (e.raw) {
-      // 去掉尾部空行再数行，避免 3 行内容因尾随换行被算成 4 行
-      var lines = String(e.raw).replace(/\\n+$/, '').split('\\n').length;
-      if (foldRaw && lines > 3) {
-        body += '<details class="ev-raw"><summary>原始输出 · ' + lines + ' 行</summary><pre>' + esc(e.raw) + '</pre></details>';
+      // 去掉尾部空行再数行，避免 3 行内容因尾随换行被算成 4 行；CRLF 先归一，避免行尾回车符进入 pre-wrap（本段位于模板字符串内，注释里不可写反斜杠转义）
+      var rawLines = String(e.raw).replace(/\\r\\n/g, '\\n').replace(/\\n+$/, '').split('\\n');
+      var isLog = rawLines.some(function (l) { return LOG_LEVEL_RE.test(l); });
+      if (isLog) {
+        var pats = evHighlights(e);
+        var hits = [];
+        rawLines.forEach(function (l, i) { if (isLogHit(l, pats)) hits.push(i); });
+        if (foldRaw && rawLines.length > 3) {
+          // 关键行提到折叠块外，不展开也能看到结论
+          if (hits.length) {
+            body += '<div class="lg-key"><div class="lg-key-cap">关键行 · ' + hits.length + '</div>' +
+              hits.map(function (i) { return logLine(rawLines[i], true); }).join('') + '</div>';
+          }
+          body += '<details class="ev-raw"><summary>原始输出 · ' + rawLines.length + ' 行' +
+            (hits.length ? ' · 关键 ' + hits.length + ' 行' : '') + '</summary>' +
+            '<div class="ev-log">' + rawLines.map(function (l) { return logLine(l, isLogHit(l, pats)); }).join('') + '</div></details>';
+        } else {
+          body += '<div class="ev-log">' + rawLines.map(function (l) { return logLine(l, isLogHit(l, pats)); }).join('') + '</div>';
+        }
+      } else if (foldRaw && rawLines.length > 3) {
+        body += '<details class="ev-raw"><summary>原始输出 · ' + rawLines.length + ' 行</summary><pre>' + esc(e.raw) + '</pre></details>';
       } else {
         body += '<pre>' + esc(e.raw) + '</pre>';
       }

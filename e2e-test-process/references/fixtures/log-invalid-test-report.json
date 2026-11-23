@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 1,
+  "reportConfig": {
+    "logHighlight": "[ORDER][SKIP]"
+  },
+  "requirement": "fixture：logHighlight 配置非法",
+  "env": "dev",
+  "reportDate": "2026-11-23",
+  "meta": {
+    "branch": "fixture",
+    "commit": "—",
+    "carrier": "fixture",
+    "executedAt": "—",
+    "executor": "fixture"
+  },
+  "verdict": { "publishable": true, "summary": "夹具：1/1 PASS", "conditions": [] },
+  "requirements": [{ "id": "REQ-1", "title": "夹具需求" }],
+  "cases": [
+    {
+      "id": "TC-001",
+      "title": "logHighlight / evidence.highlight 不是数组：配置被忽略并告警",
+      "priority": "P0",
+      "verdict": "PASS",
+      "requirements": ["REQ-1"],
+      "layers": ["日志层"],
+      "requirementStatement": "非数组的 logHighlight 与 evidence.highlight 都应触发 LOG_HIGHLIGHT_INVALID",
+      "assertions": [
+        { "expected": "告警包含 LOG_HIGHLIGHT_INVALID", "actual": "LOG_HIGHLIGHT_INVALID", "layer": "日志层", "matches": true, "evidenceRef": "ev-log" }
+      ],
+      "evidence": [
+        {
+          "id": "ev-log",
+          "layer": "日志层",
+          "command": "服务端应用日志",
+          "result": "未高亮",
+          "raw": "2026-11-23 10:02:00.100  INFO 1 --- [x] OrderService[10] : [ORDER][SKIP] reason=E_RATING\n2026-11-23 10:02:00.200 DEBUG 1 --- [x] OrderService[11] : [ORDER][CLUSTER] 处理完成"
+        },
+        {
+          "id": "ev-log-bad-highlight",
+          "layer": "日志层",
+          "command": "服务端应用日志",
+          "result": "证据级配置非法",
+          "highlight": "[ORDER][SKIP]",
+          "raw": "2026-11-23 10:02:01.100  INFO 1 --- [x] OrderService[10] : [ORDER][SKIP] reason=E_RATING"
+        }
+      ],
+      "gaps": []
+    }
+  ],
+  "stats": { "byPriority": [{ "priority": "P0", "total": 1, "pass": 1, "fail": 0, "blocked": 0 }] },
+  "defects": [],
+  "notCovered": [],
+  "cleanup": { "method": "无（夹具）", "checkedItems": 1, "residual": 0, "detail": "夹具不构造数据" },
+  "conclusion": ["夹具：logHighlight 非法配置告警"]
+}
