@@ -1,0 +1,158 @@
+{
+  "schemaVersion": 1,
+  "requirement": "fixture：flowRef 模板/分支/节点引用异常（期望只产生 FLOW_* 告警）",
+  "env": "dev",
+  "reportDate": "2026-11-24",
+  "meta": {
+    "branch": "fixture",
+    "commit": "—",
+    "carrier": "fixture",
+    "executedAt": "—",
+    "executor": "fixture"
+  },
+  "verdict": { "publishable": true, "summary": "夹具：5/5 PASS", "conditions": [] },
+  "requirements": [{ "id": "REQ-1", "title": "夹具需求" }],
+  "flowTemplates": {
+    "demo": {
+      "title": "模板：保存 → 判定 → 写入",
+      "nodes": [
+        { "id": "start", "type": "start", "label": "开始" },
+        { "id": "api", "type": "http", "label": "保存接口", "detail": "POST /demo/save" },
+        { "id": "dec", "type": "decision", "label": "命中？" },
+        { "id": "ok", "type": "sql", "label": "写入成功", "detail": "t_demo" },
+        { "id": "end", "type": "end", "label": "结束" }
+      ],
+      "edges": [
+        { "from": "start", "to": "api" },
+        { "from": "api", "to": "dec" },
+        { "from": "dec", "to": "ok", "label": "命中", "kind": "success" },
+        { "from": "ok", "to": "end" }
+      ],
+      "branches": {
+        "hit": {
+          "label": "命中分支",
+          "nodes": ["start", "api", "dec", "ok", "end"],
+          "edges": [["start", "api"], ["api", "dec"], ["dec", "ok"], ["ok", "end"]]
+        },
+        "empty": {},
+        "ghost": {
+          "nodes": ["start", "api", "ghost"],
+          "edges": [["start", "api"], ["api", "ghost"]]
+        }
+      }
+    }
+  },
+  "cases": [
+    {
+      "id": "TC-001",
+      "title": "模板不存在",
+      "priority": "P0",
+      "verdict": "PASS",
+      "requirements": ["REQ-1"],
+      "layers": ["接口层", "数据层"],
+      "requirementStatement": "夹具",
+      "assertions": [
+        { "expected": "HTTP 200", "actual": "200", "layer": "接口层", "matches": true, "evidenceRef": "ev-api" }
+      ],
+      "evidence": [
+        { "id": "ev-api", "layer": "接口层", "command": "POST /demo/save", "result": "HTTP 200", "raw": null },
+        { "id": "ev-ok", "layer": "数据层", "command": "SELECT count(*) FROM t_demo", "result": "1", "raw": null }
+      ],
+      "gaps": [],
+      "flowRef": { "template": "missing", "branch": "hit" }
+    },
+    {
+      "id": "TC-002",
+      "title": "分支不存在",
+      "priority": "P0",
+      "verdict": "PASS",
+      "requirements": ["REQ-1"],
+      "layers": ["接口层", "数据层"],
+      "requirementStatement": "夹具",
+      "assertions": [
+        { "expected": "HTTP 200", "actual": "200", "layer": "接口层", "matches": true, "evidenceRef": "ev-api" }
+      ],
+      "evidence": [
+        { "id": "ev-api", "layer": "接口层", "command": "POST /demo/save", "result": "HTTP 200", "raw": null },
+        { "id": "ev-ok", "layer": "数据层", "command": "SELECT count(*) FROM t_demo", "result": "1", "raw": null }
+      ],
+      "gaps": [],
+      "flowRef": {
+        "template": "demo",
+        "branch": "nope",
+        "evidenceRefs": { "api": ["ev-api"], "ok": ["ev-ok"] }
+      }
+    },
+    {
+      "id": "TC-003",
+      "title": "证据节点不存在",
+      "priority": "P0",
+      "verdict": "PASS",
+      "requirements": ["REQ-1"],
+      "layers": ["接口层", "数据层"],
+      "requirementStatement": "夹具",
+      "assertions": [
+        { "expected": "HTTP 200", "actual": "200", "layer": "接口层", "matches": true, "evidenceRef": "ev-api" }
+      ],
+      "evidence": [
+        { "id": "ev-api", "layer": "接口层", "command": "POST /demo/save", "result": "HTTP 200", "raw": null },
+        { "id": "ev-ok", "layer": "数据层", "command": "SELECT count(*) FROM t_demo", "result": "1", "raw": null }
+      ],
+      "gaps": [],
+      "flowRef": {
+        "template": "demo",
+        "branch": "hit",
+        "evidenceRefs": { "ghost": ["ev-api"], "api": ["ev-api"], "ok": ["ev-ok"] }
+      }
+    },
+    {
+      "id": "TC-004",
+      "title": "分支节点/边不存在",
+      "priority": "P0",
+      "verdict": "PASS",
+      "requirements": ["REQ-1"],
+      "layers": ["接口层", "数据层"],
+      "requirementStatement": "夹具",
+      "assertions": [
+        { "expected": "HTTP 200", "actual": "200", "layer": "接口层", "matches": true, "evidenceRef": "ev-api" }
+      ],
+      "evidence": [
+        { "id": "ev-api", "layer": "接口层", "command": "POST /demo/save", "result": "HTTP 200", "raw": null },
+        { "id": "ev-ok", "layer": "数据层", "command": "SELECT count(*) FROM t_demo", "result": "1", "raw": null }
+      ],
+      "gaps": [],
+      "flowRef": {
+        "template": "demo",
+        "branch": "ghost",
+        "evidenceRefs": { "api": ["ev-api"], "ok": ["ev-ok"] }
+      }
+    },
+    {
+      "id": "TC-005",
+      "title": "空分支",
+      "priority": "P0",
+      "verdict": "PASS",
+      "requirements": ["REQ-1"],
+      "layers": ["接口层", "数据层"],
+      "requirementStatement": "夹具",
+      "assertions": [
+        { "expected": "HTTP 200", "actual": "200", "layer": "接口层", "matches": true, "evidenceRef": "ev-api" }
+      ],
+      "evidence": [
+        { "id": "ev-api", "layer": "接口层", "command": "POST /demo/save", "result": "HTTP 200", "raw": null },
+        { "id": "ev-ok", "layer": "数据层", "command": "SELECT count(*) FROM t_demo", "result": "1", "raw": null }
+      ],
+      "gaps": [],
+      "flowRef": {
+        "template": "demo",
+        "branch": "empty",
+        "evidenceRefs": { "api": ["ev-api"], "ok": ["ev-ok"] }
+      }
+    }
+  ],
+  "stats": { "byPriority": [{ "priority": "P0", "total": 5, "pass": 5, "fail": 0, "blocked": 0 }] },
+  "defects": [],
+  "notCovered": [],
+  "cleanup": { "method": "无（夹具）", "checkedItems": 1, "residual": 0, "detail": "夹具不构造数据" },
+  "conclusion": ["夹具：flowRef 异常分支"]
+}

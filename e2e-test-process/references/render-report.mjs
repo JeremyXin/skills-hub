@@ -20,7 +20,8 @@
  * - Markdown 是事实源，JSON 与 HTML 都是派生物；HTML 不得手工编辑。
  * - 零第三方依赖，产物自包含（CSS/JS 内联，无 CDN）。
  * - 证据原文（command/result/raw/implementation）原样转义，不解析行内 Markdown。
- * - 用例流程图（cases[].flow）的排版约定见同目录 report-flow-design.md；改布局前先读它。
+ * - 用例流程图支持内联 cases[].flow，或顶层 flowTemplates + cases[].flowRef（模板 + 分支）；
+ *   flowRef 只声明分支与证据，模板渲染全图并淡化非本用例路径。排版约定见同目录 report-flow-design.md。
  */
 
 import { readdirSync, readFileSync, writeFileSync, statSync } from 'node:fs';
@@ -352,6 +353,7 @@ function layoutFlow(flow) {
       w: s.w,
       h: s.h,
       evCount: Array.isArray(n.evidenceRefs) ? n.evidenceRefs.length : 0,
+      active: n.active !== false,
       // missing 表示「设计上就无此节点」，与未取证同义，统一虚线标注
       unverified: n.unverified === true || n.type === 'missing',
       layer: layer.get(n.id),
@@ -398,13 +400,16 @@ function layoutFlow(flow) {
       const label = e.label ? String(e.label) : '';
       const p = flowEdgePathTB(a, b, back.has(e));
       outEdges.push({
-        from: e.from, to: e.to, kind, label, back: back.has(e),
+        from: e.from, to: e.to, kind, label, back: back.has(e), active: e.active !== false,
         labelW: label ? Math.ceil(textWidth(label, FLOW.LABEL_FONT)) + 16 : 0, ...p,
       });
     }
     const width = Math.max(...outNodes.map((n) => n.x + n.w)) + FLOW.PAD;
     const height = Math.max(...outNodes.map((n) => n.y + n.h)) + FLOW.PAD + (back.size ? 30 : 0);
-    return { dir, width: Math.round(width), height: Math.round(height), nodes: outNodes, edges: outEdges };
+    return {
+      dir, width: Math.round(width), height: Math.round(height), nodes: outNodes, edges: outEdges,
+      template: flow.template, branch: flow.branch, branchLabel: flow.branchLabel, title: flow.title,
+    };
   }
 
   // ── 横向蛇形折行：列 = 层，按 ROW_MAX 贪心打包成行，奇数行反向 ──
@@ -472,16 +477,163 @@ function layoutFlow(flow) {
     const label = e.label ? String(e.label) : '';
     const p = flowEdgePathSnake(a, b, rowTop, rowBottom);
     outEdges.push({
-      from: e.from, to: e.to, kind, label, back: back.has(e),
+      from: e.from, to: e.to, kind, label, back: back.has(e), active: e.active !== false,
       labelW: label ? Math.ceil(textWidth(label, FLOW.LABEL_FONT)) + 16 : 0, ...p,
     });
   }
-  return { dir, width: Math.round(width), height: Math.round(height), nodes: outNodes, edges: outEdges };
+  return {
+    dir, width: Math.round(width), height: Math.round(height), nodes: outNodes, edges: outEdges,
+    template: flow.template, branch: flow.branch, branchLabel: flow.branchLabel, title: flow.title,
+  };
+}
+
+/** 将 branch.edges 统一成 {from,to}；支持 ["a","b"] 与 {from,to} 两种写法。 */
+function normalizeBranchEdges(branch) {
+  const out = [];
+  if (!branch || !Array.isArray(branch.edges)) return out;
+  for (const e of branch.edges) {
+    if (Array.isArray(e) && e.length >= 2) out.push({ from: String(e[0]), to: String(e[1]) });
+    else if (e && typeof e === 'object' && e.from != null && e.to != null) {
+      out.push({ from: String(e.from), to: String(e.to) });
+    }
+  }
+  return out;
+}
+
+/**
+ * 解析 cases[].flowRef + report.flowTemplates；内联 c.flow 优先。
+ * 返回 { flow, issues }：issues 由 verifyFlow 转成 warn，不在此处打断流程。
+ */
+function resolveCaseFlow(report, c) {
+  if (c && c.flow && typeof c.flow === 'object') return { flow: c.flow, issues: [] };
+  const ref = c && c.flowRef;
+  if (!ref || typeof ref !== 'object') return { flow: null, issues: [] };
+
+  const issues = [];
+  const templates = report && report.flowTemplates && typeof report.flowTemplates === 'object'
+    ? report.flowTemplates : {};
+  const tplId = ref.template == null ? '' : String(ref.template);
+  const tpl = tplId ? templates[tplId] : null;
+  if (!tpl || typeof tpl !== 'object') {
+    issues.push({
+      code: 'FLOW_TEMPLATE_MISSING',
+      message: `${c.id} 的 flowRef 引用了不存在的模板 ${tplId || '(空)'}`,
+    });
+    return { flow: null, issues };
+  }
+
+  const branches = tpl.branches && typeof tpl.branches === 'object' ? tpl.branches : {};
+  const branchId = ref.branch == null ? null : String(ref.branch);
+  const branch = branchId == null ? null : branches[branchId];
+  if (branchId != null && !branch) {
+    issues.push({
+      code: 'FLOW_BRANCH_MISSING',
+      message: `${c.id} 的 flowRef 引用了模板 ${tplId} 中不存在的分支 ${branchId}，按全量模板渲染`,
+    });
+  }
+
+  const tplNodes = (Array.isArray(tpl.nodes) ? tpl.nodes : []).filter((n) => n && n.id);
+  const tplEdges = (Array.isArray(tpl.edges) ? tpl.edges : []).filter((e) => e && e.from && e.to);
+  const tplNodeIds = new Set(tplNodes.map((n) => n.id));
+
+  let activeNodeIds = null;
+  let activeEdgeKeys = null;
+  if (branch) {
+    const bEdges = normalizeBranchEdges(branch);
+    const bNodeList = Array.isArray(branch.nodes) ? branch.nodes.map((x) => String(x)) : [];
+    if (!bNodeList.length && !bEdges.length) {
+      issues.push({
+        code: 'FLOW_BRANCH_EMPTY',
+        message: `${c.id} 的分支 ${branchId} 未声明 nodes/edges，按全量模板渲染`,
+      });
+    } else {
+      activeNodeIds = new Set(bNodeList);
+      for (const e of bEdges) { activeNodeIds.add(e.from); activeNodeIds.add(e.to); }
+      for (const id of activeNodeIds) {
+        if (!tplNodeIds.has(id)) {
+          issues.push({
+            code: 'FLOW_BRANCH_NODE_ORPHAN',
+            message: `${c.id} 的分支 ${branchId} 引用了不存在的节点 ${id}`,
+          });
+        }
+      }
+      for (const e of bEdges) {
+        if (!tplNodeIds.has(e.from) || !tplNodeIds.has(e.to)) {
+          issues.push({
+            code: 'FLOW_BRANCH_EDGE_ORPHAN',
+            message: `${c.id} 的分支 ${branchId} 的边 ${e.from} → ${e.to} 指向不存在的节点`,
+          });
+        }
+      }
+      const keys = bEdges.length
+        ? bEdges.map((e) => `${e.from}->${e.to}`)
+        : tplEdges.filter((e) => activeNodeIds.has(e.from) && activeNodeIds.has(e.to))
+          .map((e) => `${e.from}->${e.to}`);
+      activeEdgeKeys = new Set(keys);
+    }
+  }
+
+  const evidenceMap = ref.evidenceRefs && typeof ref.evidenceRefs === 'object' ? ref.evidenceRefs : {};
+  const overrides = ref.nodeOverrides && typeof ref.nodeOverrides === 'object' ? ref.nodeOverrides : {};
+  for (const nodeId of Object.keys(evidenceMap)) {
+    if (!tplNodeIds.has(nodeId)) {
+      issues.push({
+        code: 'FLOW_REF_NODE_UNKNOWN',
+        message: `${c.id} 的 flowRef.evidenceRefs 引用了模板 ${tplId} 中不存在的节点 ${nodeId}`,
+      });
+    }
+  }
+  for (const nodeId of Object.keys(overrides)) {
+    if (!tplNodeIds.has(nodeId)) {
+      issues.push({
+        code: 'FLOW_REF_NODE_UNKNOWN',
+        message: `${c.id} 的 flowRef.nodeOverrides 引用了模板 ${tplId} 中不存在的节点 ${nodeId}`,
+      });
+    }
+  }
+
+  const nodes = tplNodes.map((n) => {
+    const o = overrides[n.id] && typeof overrides[n.id] === 'object' ? overrides[n.id] : {};
+    const override = {};
+    for (const k of ['label', 'detail', 'unverified', 'note']) {
+      if (o[k] !== undefined) override[k] = o[k];
+    }
+    const evidenceRefs = Array.isArray(evidenceMap[n.id])
+      ? evidenceMap[n.id]
+      : (Array.isArray(n.evidenceRefs) ? n.evidenceRefs : []);
+    return {
+      ...n,
+      ...override,
+      evidenceRefs,
+      active: activeNodeIds ? activeNodeIds.has(n.id) : true,
+    };
+  });
+  const edges = tplEdges.map((e) => ({
+    ...e,
+    active: activeEdgeKeys ? activeEdgeKeys.has(`${e.from}->${e.to}`) : true,
+  }));
+
+  return {
+    flow: {
+      title: ref.title || (branch && (branch.title || branch.label)) || tpl.title || '',
+      direction: ref.direction || tpl.direction || 'LR',
+      template: tplId,
+      branch: branchId,
+      branchLabel: (branch && (branch.label || branch.title)) || '',
+      nodes,
+      edges,
+    },
+    issues,
+  };
 }
 
 function computeFlowLayouts(report) {
   const layouts = {};
   for (const c of Array.isArray(report.cases) ? report.cases : []) {
+    if (c && !c.flow && c.flowRef) {
+      const { flow } = resolveCaseFlow(report, c);
+      if (flow) c.flow = flow;
+    }
     if (c && c.flow && typeof c.flow === 'object') {
       const lay = layoutFlow(c.flow);
       if (lay) layouts[c.id] = lay;
@@ -490,12 +642,15 @@ function computeFlowLayouts(report) {
   return layouts;
 }
 
-function verifyFlow(c, add, evIds) {
+function verifyFlow(report, c, add, evIds) {
+  const resolved = resolveCaseFlow(report, c);
+  if (resolved.flow) c.flow = resolved.flow;
+  for (const issue of resolved.issues) add(issue.code, 'warn', issue.message, [c.id]);
   const f = c.flow;
   if (!f || typeof f !== 'object') return;
   const nodes = Array.isArray(f.nodes) ? f.nodes : [];
   if (!nodes.length) {
-    add('FLOW_EMPTY', 'warn', `${c.id} 声明了 flow，但 nodes 为空`, [c.id]);
+    add('FLOW_EMPTY', 'warn', `${c.id} 声明了 flow${f.template ? `（模板 ${f.template}）` : ''}，但 nodes 为空`, [c.id]);
     return;
   }
   if (f.direction != null && f.direction !== 'LR' && f.direction !== 'TB') {
@@ -510,6 +665,7 @@ function verifyFlow(c, add, evIds) {
     if (!n || !n.id || ids.has(n.id)) { dups.push(n && n.id ? n.id : '(空)'); if (n && n.id) ids.add(n.id); }
     else ids.add(n.id);
     if (n && !FLOW_TYPE_LABELS[n.type]) unknown.push(`${n.id}:${n.type}`);
+    if (n && n.active === false) continue;
     const refs = n && Array.isArray(n.evidenceRefs) ? n.evidenceRefs : [];
     const type = n && FLOW_TYPE_LABELS[n.type] ? n.type : 'service';
     if (!FLOW_CANNOT_PROVE.has(type) && n && n.unverified !== true && !refs.length) {
@@ -618,8 +774,8 @@ function verify(report) {
       }
     }
 
-    // 3b. 测试流程（可选；无 flow 的旧报告不产生任何新告警）
-    verifyFlow(c, add, evIds);
+    // 3b. 测试流程（可选；无 flow/flowRef 的旧报告不产生任何新告警）
+    verifyFlow(report, c, add, evIds);
 
     // 3c. 结构化表格（可选）：tables 必须是数组，每张表 columns/rows 必须齐备且等长
     for (const e of c.evidence || []) {
@@ -943,6 +1099,7 @@ function renderHtml(report, alarms, sourceName) {
   .fl-swatch-neutral { background: var(--panel-2); border-color: var(--flow-neutral); border-radius: 8px; }
   .fl-swatch-missing { background: var(--panel-2); border: 1.5px dashed var(--flow-neutral); border-radius: 8px; }
   .fl-swatch-unverified { background: var(--warn-bg); border: 1.5px dashed var(--warn); }
+  .fl-swatch-inactive { background: var(--panel-2); border-color: var(--dim); opacity: .4; }
 
   .flow-wrap {
     border: 1px solid var(--border); border-radius: 14px; padding: 14px 16px 10px;
@@ -965,6 +1122,9 @@ function renderHtml(report, alarms, sourceName) {
   .fl-node .fl-title { font-weight: 600; }
   .fl-node .fl-sub { font-size: 10.5px; fill: var(--muted); font-weight: 400; }
   .fl-node.unverified .fl-shape { stroke-dasharray: 5 4; }
+  .fl-node.inactive { opacity: .3; }
+  .fl-edge.inactive { opacity: .25; }
+  .fl-edge-label.inactive, .fl-edge-label-bg.inactive { opacity: .35; }
   .fl-http .fl-shape { fill: color-mix(in srgb, var(--flow-http) 13%, var(--flow-panel)); stroke: var(--flow-http); }
   .fl-sql .fl-shape { fill: color-mix(in srgb, var(--flow-sql) 13%, var(--flow-panel)); stroke: var(--flow-sql); }
   .fl-sql .fl-shape-top { fill: color-mix(in srgb, var(--flow-sql) 20%, var(--flow-panel)); stroke: var(--flow-sql); stroke-width: 1.25; }
@@ -1292,7 +1452,7 @@ function renderHtml(report, alarms, sourceName) {
   }
 
   function renderFlowNode(n) {
-    var cls = 'fl-node fl-' + n.type + (n.unverified ? ' unverified' : '');
+    var cls = 'fl-node fl-' + n.type + (n.unverified ? ' unverified' : '') + (n.active === false ? ' inactive' : '');
     var g = '<g class="' + cls + '" data-flow-node="' + esc(n.id) + '" tabindex="0" role="button">';
     var tip = n.label + (n.detail ? ' · ' + n.detail : '') + (n.note ? ' · ' + n.note : '');
     g += '<title>' + esc(tip) + '</title>' + flowShape(n);
@@ -1318,12 +1478,13 @@ function renderHtml(report, alarms, sourceName) {
   function renderFlowEdges(lay) {
     return lay.edges.map(function (e) {
       var marker = e.kind === 'success' ? 'fl-arrow-ok' : e.kind === 'error' ? 'fl-arrow-bad' : e.kind === 'retry' ? 'fl-arrow-warn' : 'fl-arrow';
-      var s = '<path class="fl-edge ' + e.kind + '" d="' + e.d + '" marker-end="url(#' + marker + ')" />';
+      var off = e.active === false ? ' inactive' : '';
+      var s = '<path class="fl-edge ' + e.kind + off + '" d="' + e.d + '" marker-end="url(#' + marker + ')" />';
       if (e.label) {
         var w = e.labelW || Math.ceil(e.label.length * 8) + 14;
         var lx = e.vertical ? e.lx + w / 2 + 3 : e.lx;
-        s += '<rect class="fl-edge-label-bg" x="' + (lx - w / 2) + '" y="' + (e.ly - 7) + '" width="' + w + '" height="14" rx="3" />' +
-          '<text class="fl-edge-label ' + e.kind + '" x="' + lx + '" y="' + (e.ly + 4) + '" text-anchor="middle">' + esc(e.label) + '</text>';
+        s += '<rect class="fl-edge-label-bg' + off + '" x="' + (lx - w / 2) + '" y="' + (e.ly - 7) + '" width="' + w + '" height="14" rx="3" />' +
+          '<text class="fl-edge-label ' + e.kind + off + '" x="' + lx + '" y="' + (e.ly + 4) + '" text-anchor="middle">' + esc(e.label) + '</text>';
       }
       return s;
     }).join('');
@@ -1332,20 +1493,27 @@ function renderHtml(report, alarms, sourceName) {
   function renderFlowSection(c, lay) {
     var seen = [];
     lay.nodes.forEach(function (n) { if (seen.indexOf(n.type) < 0) seen.push(n.type); });
-    var legend = seen.map(function (t) {
+    var legend = lay.branchLabel
+      ? '<span class="fl-legend-item"><b>分支</b> ' + esc(lay.branchLabel) + '</span>'
+      : '';
+    legend += seen.map(function (t) {
       var tone = t === 'start' || t === 'end' ? 'neutral' : t;
       return '<span class="fl-legend-item"><i class="fl-swatch fl-swatch-' + esc(tone) + '"></i>' + esc(FLOW_LABELS[t] || t) + '</span>';
     }).join('');
     if (lay.nodes.some(function (n) { return n.unverified; })) {
       legend += '<span class="fl-legend-item"><i class="fl-swatch fl-swatch-unverified"></i>未取证</span>';
     }
+    if (lay.nodes.some(function (n) { return n.active === false; })) {
+      legend += '<span class="fl-legend-item"><i class="fl-swatch fl-swatch-inactive"></i>非本用例路径</span>';
+    }
     var aria = lay.nodes.map(function (n) { return n.label; }).join(' → ');
-    return '<div class="section-label" style="margin-top:18px">测试流程 · ' + lay.nodes.length + ' 步</div>' +
+    return '<div class="section-label" style="margin-top:18px">测试流程 · ' + lay.nodes.length + ' 步' +
+      (lay.branchLabel ? ' · 分支：' + esc(lay.branchLabel) : '') + '</div>' +
       '<div class="flow-legend">' + legend + '</div>' +
       '<div class="flow-wrap"><svg class="flow-svg" role="img" aria-label="' + esc(aria) + '" viewBox="0 0 ' + lay.width + ' ' + lay.height +
       '" width="' + lay.width + '" height="' + lay.height + '" preserveAspectRatio="xMinYMin meet">' +
       renderFlowEdges(lay) + lay.nodes.map(renderFlowNode).join('') + '</svg></div>' +
-      '<div class="flow-hint">点击节点可定位到对应证据</div>';
+      '<div class="flow-hint">当前分支高亮；点击节点可定位到对应证据</div>';
   }
 
   var COL_SEM = (REPORT.reportConfig && REPORT.reportConfig.columnSemantics) || {};

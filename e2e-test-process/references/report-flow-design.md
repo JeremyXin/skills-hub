@@ -1,4 +1,4 @@
-# 测试流程图（`cases[].flow`）设计与排版约定
+# 测试流程图（`cases[].flow` / `flowTemplates` + `flowRef`）设计与排版约定
 
 > 归属：`references/render-report.mjs` 的配套设计说明。数据字段以 `test-report-schema.md` 为准，
 > 本文件只回答「为什么这样画、怎么改不会画坏」。改渲染器前先读本文件。
@@ -6,7 +6,8 @@
 ## 1. 定位
 
 流程图是用例级**可选**字段：Markdown 仍是事实源，`flow` 只是把「这条用例怎么跑出来的」画成图，
-HTML 里按节点组织的原始证据是它的下钻目标。没有 `flow` 的用例走旧路径，DOM 与告警完全不变。
+HTML 里按节点组织的原始证据是它的下钻目标。没有 `flow` / `flowRef` 的用例走旧路径，DOM 与告警完全不变。
+同一条业务链路被多条用例覆盖时，优先用 §8 的模板复用，而不是逐条复制节点。
 
 ## 2. 布局：横向蛇形折行（LR）
 
@@ -85,17 +86,41 @@ SVG 通过 `viewBox` **等比铺满容器**：
 
 - **重试不用回边**：按真实时序画前向链（首次回调 → 判断 → 置失败态 → 排重试 → 重试触发 → 重试回调 → 成功）。
   回边会让读者以为重试是同步循环，且会触发告警。
-- **一条用例一张图**：只画该用例验证的主链路；跑一次通用前置流程不画。
+- **一条用例一张图**：只画该用例验证的主链路；跑一次通用前置流程不画。同一条链路被多条用例覆盖时，
+  用模板 + 分支（§8），不要复制整张图。
 - 节点 `label` 写业务语义（中文动词短语），`detail` 写可定位的技术标识（接口路径、表名、JobKey）。
   两者都不要超过 2 行——超出会被截断，全文只在 `<title>` 里。
 
-## 8. 回归方式
+## 8. 模板复用（`flowTemplates` + `flowRef`）
+
+**问题**：同一张接管链路图被 10 条用例复用，逐条复制 `nodes` / `edges` 会漂移：改一个节点要改 10 处，
+reviewer 也无法确认不同用例看的是同一条链路。
+
+**做法**：
+
+1. 报告顶层 `flowTemplates.<id>` 定义一次完整链路（拓扑、节点、边、所有分支终态）。
+2. `branches.<id>` 只声明当前分支经过的 `nodes` / `edges`；同一模板可有多个分支。
+3. 用例只写 `flowRef: { template, branch, evidenceRefs }`，不写节点/边。
+4. 渲染器始终画完整模板；当前分支的节点/边带 `active: true`，其余降透明度（`inactive`），
+   图例显示「分支：…」与「非本用例路径」。
+
+**边界**：
+
+- 模板负责「链路长什么样」，用例负责「走了哪条分支、证据挂哪个节点」；不要为单条用例 fork 模板。
+- 决策点后的分支边建议显式列在 `branch.edges`；只给 `branch.nodes` 时，两端都在节点集内的边会被激活，
+  可能把相邻分支的边一起点亮。
+- `flowRef.evidenceRefs` 只挂当前分支的节点；模板节点可以带 `unverified` / `note`，但通常不挂证据。
+- `FLOW_NODE_NO_EVIDENCE` 只检查 active 节点；非当前分支缺少证据是正常的，不告警。
+- 模板可以放在项目 skill 的 `references/*-flow-templates.md` 中作为事实源，报告 JSON 复制/生成同一份；
+  用例只引用模板 id，避免每条用例各写一份。
+
+## 9. 回归方式
 
 ```bash
 # 1. fixtures 自动回归：断言每份夹具的告警码集合与 expected.json 一致，退出码非 0 即失败
 node ~/.claude/skills/e2e-test-process/references/fixtures/run.mjs
 
-# 2. 真实报告：新告警必须清零，旧报告（无 flow）告警输出与改造前逐行一致
+# 2. 真实报告：新告警必须清零，旧报告（无 flow/flowRef）告警输出与改造前逐行一致
 node ~/.claude/skills/e2e-test-process/references/render-report.mjs <报告目录> --strict
 ```
 

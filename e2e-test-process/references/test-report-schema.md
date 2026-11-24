@@ -19,6 +19,7 @@ node ~/.claude/skills/e2e-test-process/references/render-report.mjs <报告目�
 |---|---|---|
 | `schemaVersion` | 是 | 当前为 `1` |
 | `reportConfig` | 否 | 项目差异声明，见 §3 |
+| `flowTemplates` | 否 | 报告级流程模板（模板 + 分支），见 §4；与 `cases[].flowRef` 配合 |
 | `requirement` / `env` / `reportDate` | 是 | 需求名、`dev`/`test`、`YYYY-MM-DD` |
 | `meta` | 是 | `branch` / `commit` / `carrier` / `executedAt` / `executor` |
 | `verdict` | 是 | `publishable`（bool）、`summary`；`conditions[]` 与 `publishable=true` 可并存 |
@@ -44,7 +45,8 @@ node ~/.claude/skills/e2e-test-process/references/render-report.mjs <报告目�
 | `assertions[]` | 是 | `{expected, actual, layer, matches, evidenceRef}`，**必须写实测值，不能只写「通过」** |
 | `evidence[]` | 是 | `{id, layer, command, result, at?, keys?, request?, response?, raw?, tables?, highlight?}`；`at` 为证据发生时刻（`HH:mm:ss`，区间用 `a–b`），`keys` 为业务 key 对象（`{contactWa, productId, clusterId, ...}`），`raw` 为原始输出全文，`tables` 为结构化查询结果（可多条，见 §3.1），`highlight` 为该证据的关键行补充匹配串（见 §3.2） |
 | `gaps[]` | 否 | 已知未被断言覆盖的点 |
-| `flow` | 否 | 用例级测试流程图，见 §4 |
+| `flow` | 否 | 用例级测试流程图（单次链路），见 §4 |
+| `flowRef` | 否 | 引用报告级 `flowTemplates` 的模板 + 分支并挂证据，见 §4 |
 | `failureAnalysis` | FAIL 时必填 | `{layer, expected, actual, analysis, defectIds[]}` |
 | `history[]` | 否 | 用例级多轮：`{round, time?, verdict, note}`，最后一轮必须等于 `verdict` |
 
@@ -124,11 +126,13 @@ node ~/.claude/skills/e2e-test-process/references/render-report.mjs <报告目�
 
 匹配是字面包含，不走正则；传非字符串数组时配置被忽略并告警 `LOG_HIGHLIGHT_INVALID`。
 
-## 4. 测试流程（`cases[].flow`，可选）
+## 4. 测试流程（`cases[].flow` 或 `flowTemplates` + `flowRef`，可选）
 
-把一条用例的执行链路画成流程图，并把原始证据按节点下钻。**不写 `flow` 的用例不受任何影响**：
+把一条用例的执行链路画成流程图，并把原始证据按节点下钻。**不写 `flow` 也不写 `flowRef` 的用例不受任何影响**：
 既不渲染新区块，证据仍按「取证层」分组，告警输出与改造前逐行一致。排版与形状约定见
 `report-flow-design.md`；本节的字段与规则是唯一契约。
+
+### 4.1 内联 `flow`（单次链路）
 
 ```jsonc
 "flow": {
@@ -158,6 +162,64 @@ node ~/.claude/skills/e2e-test-process/references/render-report.mjs <报告目�
 | `edges[].kind` | 否 | `normal`(默认)/`success`/`error`/`retry`/`async`，只影响线条颜色与虚实 |
 | `direction` | 否 | `LR`（默认，横向蛇形折行）或 `TB`（纵向长链） |
 
+### 4.2 模板复用（`flowTemplates` + `cases[].flowRef`，推荐）
+
+同一条业务链路被多条用例覆盖时，不要在每条用例里复制 `nodes` / `edges`。把链路定义一次放在报告顶层
+`flowTemplates`，用例只用 `flowRef` 选择分支并挂证据。渲染器会画出**完整模板**，高亮当前分支、淡化其余路径，
+让 reviewer 始终看到同一条标准链路。
+
+```jsonc
+"flowTemplates": {
+  "takeover-30min": {
+    "title": "30 分钟接管扫描",
+    "direction": "LR",
+    "nodes": [
+      { "id": "start", "type": "start", "label": "调度触发" },
+      { "id": "scan", "type": "service", "label": "扫描候选" },
+      { "id": "db", "type": "sql", "label": "写信号", "detail": "cf_buyer_takeover_signal" },
+      { "id": "end", "type": "end", "label": "已发送" }
+    ],
+    "edges": [
+      { "from": "start", "to": "scan" },
+      { "from": "scan", "to": "db" },
+      { "from": "db", "to": "end" }
+    ],
+    "branches": {
+      "p0d30-d3": {
+        "label": "P0D30 · D 级 + 消息≥3",
+        "nodes": ["start", "scan", "db", "end"],
+        "edges": [["start", "scan"], ["scan", "db"], ["db", "end"]]
+      }
+    }
+  }
+},
+"cases": [{
+  "id": "TC-02",
+  "flowRef": {
+    "template": "takeover-30min",
+    "branch": "p0d30-d3",
+    "evidenceRefs": { "scan": ["ev-tc02-log"], "db": ["ev-tc02-db"] }
+  }
+}]
+```
+
+| 字段 | 必填 | 说明 |
+|---|---|---|
+| `flowTemplates.<id>.nodes` / `edges` | 是 | 与内联 `flow` 的节点/边结构相同；模板通常不挂 `evidenceRefs`，由用例挂 |
+| `flowTemplates.<id>.title` / `direction` | 否 | 模板默认标题/方向 |
+| `flowTemplates.<id>.branches.<id>.label` | 否 | 分支显示名，渲染在图例与标题中 |
+| `flowTemplates.<id>.branches.<id>.nodes` | 否 | 当前用例经过的节点 id；与 `edges` 至少填一个 |
+| `flowTemplates.<id>.branches.<id>.edges` | 否 | 当前用例经过的边；支持 `["from","to"]` 或 `{from,to}`。只填 `nodes` 时，激活两端都在 `nodes` 内的边 |
+| `cases[].flowRef.template` | 是 | 模板 id；不存在触发 `FLOW_TEMPLATE_MISSING` |
+| `cases[].flowRef.branch` | 否 | 分支 id；不存在触发 `FLOW_BRANCH_MISSING`，按全量模板渲染 |
+| `cases[].flowRef.evidenceRefs` | 否 | `{节点 id: [证据 id...]}`；覆盖模板该节点的 `evidenceRefs`，只挂当前分支的节点 |
+| `cases[].flowRef.nodeOverrides` | 否 | `{节点 id: {label?, detail?, unverified?, note?}}`；仅覆盖展示字段，不改拓扑 |
+| `cases[].flowRef.title` / `direction` | 否 | 用例级标题/方向覆盖 |
+
+解析顺序：`cases[].flow`（内联）优先；没有内联 `flow` 时才解析 `flowRef`。两者都没有的用例不受影响。
+模板全量渲染，`branch` 只决定哪些节点/边高亮（`active`），非当前分支降透明度；
+`FLOW_NODE_NO_EVIDENCE` 只检查当前分支的节点，`FLOW_EVIDENCE_UNBOUND` 仍按解析后的整图统计。
+
 约定：
 
 - **证据只经 `nodes[].evidenceRefs` 挂载**，`evidence[]` 结构不变；一条证据可被多个节点引用。
@@ -166,13 +228,13 @@ node ~/.claude/skills/e2e-test-process/references/render-report.mjs <报告目�
   真回边虽可渲染，但会触发 `FLOW_CYCLE_BACKEDGE` 并绕过行间通道视觉语义。
 - `start`/`end`/`decision`/`missing` 天然不产生证据，不参与 `FLOW_NODE_NO_EVIDENCE` 判定。
 
-### 证据展示（有 `flow` 时）
+### 证据展示（有 `flow` / `flowRef` 时）
 
 - 节点内证据**按 `at` 升序排列**，无 `at` 的排在最后；同一节点内的多条证据因此可按时序阅读。
 - 证据卡头展示 `id` + 取证层 + `at` 时刻，其下是 `keys` 业务 key 胶囊。
 - `raw` 超过 3 行时折叠为「原始输出 · N 行」，点击展开；≤3 行直接展示。
 - 断言表多一列「证据」：`evidenceRef` 可解析时渲染为可点击链接，点击会展开该证据所在折叠块并高亮。
-- 无 `flow` 的报告不产生上述任何 DOM 变化。
+- 无 `flow` / `flowRef` 的报告不产生上述任何 DOM 变化。
 
 ## 5. 报文原文
 
@@ -204,20 +266,26 @@ node ~/.claude/skills/e2e-test-process/references/render-report.mjs <报告目�
 | `LOG_HIGHLIGHT_INVALID` | `reportConfig.logHighlight` 或 `evidence[].highlight` 不是非空字符串数组（配置被忽略） | warn |
 | `CLEANUP_UNVERIFIED` | `cleanup.residual` 缺失或 `checkedItems=0` | warn |
 
-流程相关告警**仅在用例声明了 `flow` 时触发**，全部为 warn，按「用例 + 规则」聚合成一条：
+流程相关告警**仅在用例声明了 `flow` 或 `flowRef` 时触发**，全部为 warn，按「用例 + 规则」聚合成一条：
 
 | code | 规则 |
 |---|---|
-| `FLOW_EMPTY` | 声明了 `flow` 但 `nodes` 为空 |
+| `FLOW_EMPTY` | 声明/解析后的 `flow` 中 `nodes` 为空 |
 | `FLOW_BAD_DIRECTION` | `direction` 不是 `LR`/`TB`（按 LR 渲染） |
 | `FLOW_DUP_NODE_ID` | 节点 `id` 重复或为空 |
 | `FLOW_NODE_UNKNOWN_TYPE` | 节点类型不在枚举内（按 `service` 渲染） |
-| `FLOW_NODE_NO_EVIDENCE` | 可取证类型的节点既无 `evidenceRefs` 也未标 `unverified` |
+| `FLOW_NODE_NO_EVIDENCE` | 当前分支（active）可取证类型的节点既无 `evidenceRefs` 也未标 `unverified` |
 | `FLOW_EDGE_ORPHAN` | 边指向不存在的节点 |
 | `FLOW_EVIDENCE_ORPHAN` | `evidenceRefs` 指向不存在的证据 id |
 | `FLOW_EVIDENCE_UNBOUND` | 证据存在但未被任何节点引用（仍会展示为「未挂载」组） |
 | `FLOW_IN_EDGE_MISSING` | 非 `start` 节点没有入边 |
 | `FLOW_CYCLE_BACKEDGE` | 存在回边（重试应建模为前向链） |
+| `FLOW_TEMPLATE_MISSING` | `flowRef.template` 指向的模板不存在 |
+| `FLOW_BRANCH_MISSING` | `flowRef.branch` 指向的分支不存在（按全量模板渲染） |
+| `FLOW_BRANCH_EMPTY` | 分支未声明 `nodes`/`edges`（按全量模板渲染） |
+| `FLOW_BRANCH_NODE_ORPHAN` | 分支 `nodes` 引用了模板中不存在的节点 |
+| `FLOW_BRANCH_EDGE_ORPHAN` | 分支 `edges` 指向模板中不存在的节点 |
+| `FLOW_REF_NODE_UNKNOWN` | `flowRef.evidenceRefs` / `nodeOverrides` 的 key 不是模板节点 id |
 
 只有 blocker 会阻断发布；warn 需要在结论或 `conditions` 中说明。
 

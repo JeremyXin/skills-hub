@@ -1,6 +1,15 @@
 {
   "flow-linear-test-report.json": [],
   "flow-branch-test-report.json": [],
+  "flow-template-test-report.json": [],
+  "flow-template-invalid-test-report.json": [
+    "FLOW_TEMPLATE_MISSING",
+    "FLOW_BRANCH_MISSING",
+    "FLOW_REF_NODE_UNKNOWN",
+    "FLOW_BRANCH_NODE_ORPHAN",
+    "FLOW_BRANCH_EDGE_ORPHAN",
+    "FLOW_BRANCH_EMPTY"
+  ],
   "flow-retry-test-report.json": [],
   "flow-missing-test-report.json": ["LAYER_NO_EVIDENCE"],
   "flow-longlabel-test-report.json": [],
