@@ -1420,12 +1420,48 @@ function renderHtml(report, alarms, sourceName) {
     if (sql) html += '<details class="ev-sql"><summary>查看 SQL</summary><pre>' + esc(sql) + '</pre></details>';
     return html;
   }
+  function autoTablesEnabled() {
+    return !(REPORT.reportConfig && REPORT.reportConfig.autoTables === false);
+  }
+  /** 未显式声明 tables 时，尝试把 raw 的 JSON 结果自动转成表格；失败返回 null，保持原文本渲染。 */
+  function autoTableFromRaw(e) {
+    if (!e.raw) return null;
+    var parsed;
+    try { parsed = JSON.parse(String(e.raw)); } catch (err) { return null; }
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed) &&
+        Array.isArray(parsed.columns) && Array.isArray(parsed.rows)) {
+      return [{ name: '查询结果', columns: parsed.columns, rows: parsed.rows, sql: e.command || '' }];
+    }
+    if (!Array.isArray(parsed) || parsed.length === 0) return null;
+    for (var i = 0; i < parsed.length; i++) {
+      if (!parsed[i] || typeof parsed[i] !== 'object' || Array.isArray(parsed[i])) return null;
+    }
+    var cols = [];
+    parsed.forEach(function (row) {
+      Object.keys(row).forEach(function (k) { if (cols.indexOf(k) < 0) cols.push(k); });
+    });
+    if (!cols.length) return null;
+    var rows = parsed.map(function (row) {
+      return cols.map(function (c) {
+        var v = row[c];
+        if (v === null || v === undefined) return null;
+        if (typeof v === 'object') return JSON.stringify(v);
+        return v;
+      });
+    });
+    return [{ name: '查询结果', columns: cols, rows: rows, sql: e.command || '' }];
+  }
   function evBody(e, foldRaw) {
     var body = '';
     var req = payloadText(e.request), res = payloadText(e.response);
     if (req) body += '<div class="payload-label">请求</div><pre>' + esc(req) + '</pre>';
     if (res) body += '<div class="payload-label">响应</div><pre>' + esc(res) + '</pre>';
     var tables = Array.isArray(e.tables) ? e.tables : [];
+    var autoTabled = false;
+    if (!tables.length && autoTablesEnabled()) {
+      var auto = autoTableFromRaw(e);
+      if (auto) { tables = auto; autoTabled = true; }
+    }
     if (tables.length) {
       // 结构化表格已承载行值，command 不再平铺，result 只作结论行
       body += tables.map(function (t) { return evTable(t, e); }).join('');
@@ -1434,7 +1470,9 @@ function renderHtml(report, alarms, sourceName) {
       if (e.command) body += '<pre>' + esc(e.command) + '</pre>';
       if (e.result) body += '<pre>' + esc(e.result) + '</pre>';
     }
-    if (e.raw) {
+    if (e.raw && autoTabled) {
+      body += '<details class="ev-raw"><summary>原始输出</summary><pre>' + esc(e.raw) + '</pre></details>';
+    } else if (e.raw) {
       // 去掉尾部空行再数行，避免 3 行内容因尾随换行被算成 4 行；CRLF 先归一，避免行尾回车符进入 pre-wrap（本段位于模板字符串内，注释里不可写反斜杠转义）
       var rawLines = String(e.raw).replace(/\\r\\n/g, '\\n').replace(/\\n+$/, '').split('\\n');
       var isLog = rawLines.some(function (l) { return LOG_LEVEL_RE.test(l); });

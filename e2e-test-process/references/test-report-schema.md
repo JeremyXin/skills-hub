@@ -104,6 +104,8 @@ node ~/.claude/skills/e2e-test-process/references/render-report.mjs <报告目�
 渲染约定：`null` 显示为灰色 `∅`（与字符串 `"null"` 区分）、数字右对齐、超过 28 字符截断并把全文放进 `title`、命中 `columnSemantics.values` 的值显示为彩色标签（`title` 保留原值）。
 声明 `tables` 后 `command` 不再平铺显示，`result` 只作为表格下方的结论行——原始数组不要放 `result`。取证后表可能被后续操作改写（如重试把失败态覆盖为成功态）时，`tables` 必须用**取证时刻的快照值**并在 `raw` 保留原文，不能用事后重查的结果顶替。
 
+> **默认自动表格（2026-11-24）**：未声明 `tables` 时，渲染器会尝试把 `raw` 解析为 JSON 数组（对象数组，或 `{columns, rows}`）并自动渲染为表格；显式 `tables` 始终优先。可用 `reportConfig.autoTables: false` 关闭自动识别，退回原文本渲染。
+
 ### 3.2 日志证据的关键行（`reportConfig.logHighlight` + `evidence[].highlight`）
 
 用于「日志层」这类原文很长的证据：一边按日志级别着色，一边把与用例结论直接相关的行挑出来。
