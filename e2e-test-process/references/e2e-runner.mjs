@@ -79,17 +79,24 @@ function evalExpect(expect, r) {
     if (!expect) return [];
     return Object.entries(expect).map(([key, expected]) => {
         let actual;
+        let detail;
+        let ok;
         if (key === 'rowCount') actual = r.rowCount;
         else if (key === 'affected') actual = r.affected;
         else if (key === 'status') actual = r.status;
-        else if (key === 'contains') actual = (r.raw || (r.lines || []).join('\n'));
-        else if (key.startsWith('firstRow.')) {
+        else if (key === 'contains') {
+            const lines = (r.raw || (r.lines || []).join('\n')).split('\n').filter((l) => l.includes(String(expected)));
+            ok = lines.length > 0;
+            actual = ok ? `命中 ${lines.length} 行` : '未命中';
+            detail = lines[0] ? lines[0].slice(0, 240) : undefined;
+            return { key, expected, actual, detail, ok };
+        } else if (key.startsWith('firstRow.')) {
             const col = key.slice(9);
             actual = r.rows && r.rows[0] ? r.rows[0][r.columns.indexOf(col)] : undefined;
         } else if (key.startsWith('json.')) actual = getPath(r.json, key.slice(5));
         else actual = undefined;
-        const ok = key === 'contains' ? String(actual || '').includes(String(expected)) : same(actual, expected);
-        return { key, expected, actual, ok };
+        ok = same(actual, expected);
+        return { key, expected, actual, detail, ok };
     });
 }
 

@@ -63,6 +63,14 @@
 - `expect`（v1）：`rowCount` / `affected` / `firstRow.<列>` / `json.<点路径>` / `status` / `contains`。任一不满足 → 节点 FAIL；`optional` 节点取不到证据时记 UNVERIFIED。
 - `evidence.capture`：`tables`（SQL）/ `request,response`（HTTP）/ `raw`（日志）。生成器据此产出报告证据，避免事后补。
 - `edges`：拓扑排序；前驱 FAIL/BLOCKED 时后继记 BLOCKED。
+
+### 3.1 断言展示
+
+- 每条断言带 `key`（如 `rowCount` / `firstRow.timeScore` / `json.data.decayed` / `contains`），报告表格首列为「断言项」，原始 key 放在 title。
+- 标量断言：`预期` / `实测` 直接展示值。
+- `contains`（日志/文本包含）：`实测` 显示 `命中 N 行` / `未命中`，命中的首行放 `detail`（表格内悬停可见），完整原文仍在该节点的证据 `raw` 里。
+- 数字与字符串按值比较（数字按数值、其余按去空白字符串）；`matches` 为布尔。
+
 - 每个非 `start/end/decision` 节点必须有 `evidence`；`optional` 节点必须有说明。
 
 ## 4. 执行记录 `-test-run.json`

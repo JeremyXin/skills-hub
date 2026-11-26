@@ -1277,6 +1277,17 @@ function renderHtml(report, alarms, sourceName) {
   function esc(s) {
     return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
+
+  function assertKeyLabel(k) {
+    if (!k) return '—';
+    if (k === 'rowCount') return '行数';
+    if (k === 'affected') return '影响行数';
+    if (k === 'status') return 'HTTP 状态';
+    if (k === 'contains') return '包含文本';
+    if (k.indexOf('firstRow.') === 0) return '首行.' + k.slice(9);
+    if (k.indexOf('json.') === 0) return '响应.' + k.slice(5);
+    return k;
+  }
   function payloadText(v) {
     if (v == null) return '';
     if (typeof v === 'string') return v;
@@ -1399,7 +1410,7 @@ function renderHtml(report, alarms, sourceName) {
     if (orphans.length) groups.push({ req: { id: '其他', title: '未关联需求' }, items: orphans });
 
     return '<div class="side" role="navigation">' + groups.map(function (g) {
-      return '<div class="req-group"><div class="req-title"><span class="rid">' + esc(g.req.id) + '</span><span>' + inlineMd(g.req.title || '') + '</span></div>' +
+      return '<div class="req-group"><div class="req-title"><span class="rid">' + esc(g.req.id) + '</span>' + (g.req.title && g.req.title !== g.req.id ? '<span>' + inlineMd(g.req.title) + '</span>' : '') + '</div>' +
         g.items.map(function (c) {
           var mark = hasBlocker(c.id) ? '<span class="bad-dot" title="有 blocker 告警">✕</span>'
             : hasWarn(c.id) ? '<span class="warn-dot" title="有告警">⚠</span>' : '';
@@ -1745,7 +1756,7 @@ function renderHtml(report, alarms, sourceName) {
     if (c.requirementStatement) {
       html += '<div class="section-label">需求口径</div><div class="req-box">' + inlineMd(c.requirementStatement) +
         '<div class="req-chips">' + (c.requirements || []).map(function (r) {
-          return '<span class="pill info">' + esc(r) + (REQ_BY_ID[r] ? ' · ' + inlineMd(REQ_BY_ID[r].title) : '') + '</span>';
+          return '<span class="pill info">' + esc(r) + (REQ_BY_ID[r] && REQ_BY_ID[r].title && REQ_BY_ID[r].title !== r ? ' · ' + inlineMd(REQ_BY_ID[r].title) : '') + '</span>';
         }).join('') + '</div></div>';
     }
     if (c.implementation) {
@@ -1764,20 +1775,27 @@ function renderHtml(report, alarms, sourceName) {
     if (!as.length) {
       html += '<div class="empty">没有断言——PASS 却无断言会被判为 blocker。</div>';
     } else {
+      var asHasKey = as.some(function (a) { return !!a.key; });
       var ths = hasFlow
-        ? '<th style="width:34%">预期断言</th><th style="width:30%">实测</th><th style="width:14%">取证层</th><th style="width:12%">证据</th><th style="width:10%">匹配</th>'
-        : '<th style="width:38%">预期断言</th><th style="width:34%">实测</th><th style="width:16%">取证层</th><th style="width:12%">匹配</th>';
+        ? (asHasKey
+          ? '<th style="width:14%">断言项</th><th style="width:18%">预期</th><th style="width:26%">实测</th><th style="width:14%">取证层</th><th style="width:18%">证据</th><th style="width:10%">匹配</th>'
+          : '<th style="width:34%">预期断言</th><th style="width:30%">实测</th><th style="width:14%">取证层</th><th style="width:12%">证据</th><th style="width:10%">匹配</th>')
+        : (asHasKey
+          ? '<th style="width:16%">断言项</th><th style="width:22%">预期</th><th style="width:30%">实测</th><th style="width:16%">取证层</th><th style="width:16%">匹配</th>'
+          : '<th style="width:38%">预期断言</th><th style="width:34%">实测</th><th style="width:16%">取证层</th><th style="width:12%">匹配</th>');
       html += '<table class="assert"><thead><tr>' + ths + '</tr></thead><tbody>' +
         as.map(function (a) {
           var bad = a.matches !== true || !String(a.actual || '').trim();
+          var keyCell = asHasKey ? '<td class="mono" title="' + esc(a.key || '') + '" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(assertKeyLabel(a.key)) + '</td>' : '';
+          var actualCell = '<td class="mono"' + (a.detail ? ' title="' + esc(a.detail) + '"' : '') + '>' + inlineMd(a.actual) + '</td>';
           var evCell = '';
           if (hasFlow) {
             evCell = '<td>' + (a.evidenceRef && evIds[a.evidenceRef]
               ? '<a class="ev-jump" role="button" tabindex="0" data-ev="' + esc(a.evidenceRef) + '" title="' + esc(a.evidenceRef) + '">' + esc(a.evidenceRef) + '</a>'
               : '—') + '</td>';
           }
-          return '<tr class="' + (bad ? 'bad' : '') + '"><td>' + inlineMd(a.expected) + '</td><td class="mono">' + inlineMd(a.actual) +
-            '</td><td><span class="layer-tag">' + esc(a.layer || '—') + '</span></td>' + evCell + '<td class="mark ' + (bad ? 'bad' : 'ok') + '">' +
+          return '<tr class="' + (bad ? 'bad' : '') + '">' + keyCell + '<td>' + inlineMd(a.expected) + '</td>' + actualCell +
+            '<td><span class="layer-tag">' + esc(a.layer || '—') + '</span></td>' + evCell + '<td class="mark ' + (bad ? 'bad' : 'ok') + '">' +
             (bad ? '✕ 不一致' : '✓ 一致') + '</td></tr>';
         }).join('') + '</tbody></table>';
     }

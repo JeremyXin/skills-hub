@@ -52,9 +52,9 @@ for (const rc of run.cases) {
             layers.add(ev.layer);
         }
         for (const chk of rn.checks || []) {
-            assertions.push({ expected: chk.expected, actual: chk.actual,
-                layer: rn.evidence ? rn.evidence.layer : '服务层', matches: chk.ok,
-                evidenceRef: rn.evidence ? rn.evidence.id : undefined });
+            assertions.push({ key: chk.key, expected: chk.expected, actual: chk.actual,
+                detail: chk.detail, layer: rn.evidence ? rn.evidence.layer : '服务层',
+                matches: chk.ok, evidenceRef: rn.evidence ? rn.evidence.id : undefined });
         }
     }
 
