@@ -67,6 +67,8 @@ node ~/.claude/skills/e2e-test-process/references/render-report.mjs <报告目�
 | 字段 | 说明 |
 |---|---|
 | `payloadLayers` | 必须留 `request` / `response` 原文的层名数组；未声明时为空，不检查报文 |
+| `layerFields` | 各层证据必须包含的字段，如 `{"日志层":["raw"],"数据层":["tables"]}`；缺字段由 `check-report.mjs` 报错 |
+| `flowRequired` | 是否强制每条用例有 `flow`/`flowRef`，默认 `true`；设 `false` 才允许无流程图 |
 | `columnSemantics` | `evidence[].tables[]` 的列语义：`label` 为表头中文名（缺省用列名），`values` 为枚举值 → `[tone, 标签]`（`tone` ∈ `ok/bad/warn/info/dim`）；未声明则原样展示 |
 | `logHighlight` | 日志证据的**全局关键行匹配串**（字面子串，非正则）；命中行加粗 + 左侧色条 + 淡背景，日志过长折叠时还会提到折叠块外预览。未声明则只按日志级别着色 |
 

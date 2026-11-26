@@ -87,6 +87,29 @@ disable-model-invocation: true
 
 **可选：用例测试流程图。** 每条用例可带 `cases[].flow`，把执行链路画成 DAG 并把证据按节点下钻；无证据的服务端判断/日志步骤标 `unverified` 如实标注，不伪造报文。字段契约见 `references/test-report-schema.md` §4，排版与可读性约定见 `references/report-flow-design.md`（改渲染器布局前必读）。
 
+### 5.1 S6 退出门禁（必须执行）
+
+报告三件套提交前，以下两个命令都必须退出 0：
+
+```bash
+node ~/.claude/skills/e2e-test-process/references/check-report.mjs <报告目录> --strict
+node ~/.claude/skills/e2e-test-process/references/render-report.mjs <报告目录> --strict
+```
+
+`check-report.mjs` 在渲染之外检查：每条用例有流程图（flow/flowRef）、active 节点有证据或 `unverified`+`note`、断言写「预期+实测」、清理回查数字齐全，以及项目在 `reportConfig` 中声明的报文层与层字段要求。
+
+项目必须在报告顶层声明自己的字段要求：
+
+```json
+"reportConfig": {
+  "payloadLayers": ["接口层", "回调层"],
+  "layerFields": { "日志层": ["raw"], "数据层": ["tables"] },
+  "flowRequired": true
+}
+```
+
+完整规则、失败案例与自检清单见 `references/report-quality-gate.md`（**S6 必读**）。项目的 E2E skill 可再包一层入口，但不得放宽这两条门禁。
+
 ## 6. 业界标准对齐
 
 流程按 ISTQB 裁剪，只保留 E2E 真正用得上的部分。最容易被忽略的四条：
@@ -115,6 +138,8 @@ disable-model-invocation: true
 - `references/test-case-spec.md` — 用例结构、字段规则、设计方法、自查清单、反模式。
 - `references/test-data-spec.md` — 数据发现与构造优先级、测试标记、台账、清理、测试专用接口约束。
 - `references/test-report-template.md` — 报告结构（证据通道 + 总览 + 逐例证据）、填写规则、结论判定。
+- `references/check-report.mjs` — **S6 通用门禁**：流程图、节点证据、证据字段（按 `reportConfig` 声明）、断言与清理完整性校验。
+- `references/report-quality-gate.md` — **S6 必读**：报告质量清单、`reportConfig` 声明方式与失败模式。
 - `references/test-report-schema.md` — 可选：报告 JSON 契约、`reportConfig` 项目差异声明、`cases[].flow` 流程图、完整性告警规则。
 - `references/report-flow-design.md` — 可选：流程图排版约定（蛇形折行、可读性基线、形状映射、证据挂载）。
 - `references/render-report.mjs` — 可选：读取 JSON 生成自包含 HTML，`--strict` 时 blocker 退出码 1。
