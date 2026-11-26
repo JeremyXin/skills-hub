@@ -57,10 +57,10 @@ disable-model-invocation: true
 | S0 | 环境与前置 | 环境档案、入口准则检查结果 | 前置不满足 → 依赖它的用例记 BLOCKED |
 | S1 | 输入梳理 | `REQ-1..n` | 每条可判定、可指回来源 |
 | S2 | 测试蓝图 | 影响面、候选点、不测范围、用例骨架 | **用户确认后才写用例、造数据、执行** |
-| S3 | 测试用例 | 用例、预期、覆盖矩阵 | 每条挂 REQ，预期可断言 |
+| S3 | 测试用例 + **执行 plan** | `-test-case.md` + `-test-plan.json`（每用例 DAG） | 每条挂 REQ，预期可断言；plan 节点声明动作/期望/取证 |
 | S4 | 测试数据 | 台账、构造与清理方案 | 数据带测试标记、可检索、可清理 |
-| S5 | 执行与取证 | 逐例证据 | 不靠入口返回判定 |
-| S6 | 判定与报告 | PASS/FAIL/BLOCKED + 逐例证据 | 口径见 §5 |
+| S5 | 执行与取证 | `-test-run.json`（逐节点 actual/evidence） | 由执行器按 plan 跑，不靠入口返回判定 |
+| S6 | 判定与报告 | 由 plan+run 生成的报告三件套 | 口径见 §5；用例 flow 只含自身节点 |
 | S7 | 清理与归档 | 清理回查、缺陷记录、结论 | 未清理数据须登记保留原因 |
 
 产物目录：`<repo>/docs/auto-test/<需求名>-<YYYYMMDD>/`（项目 skill 可声明等价目录）。
@@ -110,6 +110,24 @@ node ~/.claude/skills/e2e-test-process/references/render-report.mjs <报告目�
 
 完整规则、失败案例与自检清单见 `references/report-quality-gate.md`（**S6 必读**）。项目的 E2E skill 可再包一层入口，但不得放宽这两条门禁。
 
+### 5.2 Plan-First 执行（推荐）
+
+每个用例先声明一份可执行 DAG（`-test-plan.json`），执行器按节点执行并记录证据，报告由 plan+run 生成，`cases[].flow` 只包含本用例节点：
+
+```bash
+# 1) 按 plan 执行（--adapter 由项目提供 sql/http/log 能力）
+node ~/.claude/skills/e2e-test-process/references/e2e-runner.mjs \
+  --plan <plan.json> --adapter <project-adapter.mjs> --project-root <repo> [--case TC-001]
+
+# 2) 用 plan + run 生成报告（md/json），再过门禁与渲染
+node ~/.claude/skills/e2e-test-process/references/e2e-report.mjs \
+  --plan <plan.json> --run <run.json> --out-dir <报告目录> --meta <meta.json>
+```
+
+- plan 结构、动作、断言与 run 记录见 `references/test-plan-schema.md`；
+- 公共执行器只负责调度/断言/证据组装，具体「怎么连库、怎么发请求、怎么取日志」由项目适配器实现；
+- 共享模板 `flowTemplates` 仅用于编写 plan 时复用，不参与渲染。
+
 ## 6. 业界标准对齐
 
 流程按 ISTQB 裁剪，只保留 E2E 真正用得上的部分。最容易被忽略的四条：
@@ -140,6 +158,9 @@ node ~/.claude/skills/e2e-test-process/references/render-report.mjs <报告目�
 - `references/test-report-template.md` — 报告结构（证据通道 + 总览 + 逐例证据）、填写规则、结论判定。
 - `references/check-report.mjs` — **S6 通用门禁**：流程图、节点证据、证据字段（按 `reportConfig` 声明）、断言与清理完整性校验。
 - `references/report-quality-gate.md` — **S6 必读**：报告质量清单、`reportConfig` 声明方式与失败模式。
+- `references/test-plan-schema.md` — Plan-First 的 plan/run 契约（节点、动作、断言、证据、适配器接口）。
+- `references/e2e-runner.mjs` — 通用 plan 执行器（拓扑调度、断言、证据组装）。
+- `references/e2e-report.mjs` — 由 plan+run 生成报告（一例一图）的基础生成器。
 - `references/test-report-schema.md` — 可选：报告 JSON 契约、`reportConfig` 项目差异声明、`cases[].flow` 流程图、完整性告警规则。
 - `references/report-flow-design.md` — 可选：流程图排版约定（蛇形折行、可读性基线、形状映射、证据挂载）。
 - `references/render-report.mjs` — 可选：读取 JSON 生成自包含 HTML，`--strict` 时 blocker 退出码 1。
